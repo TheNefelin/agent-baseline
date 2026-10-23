@@ -265,11 +265,13 @@ function Install-Project {
     $targetState = 'none'
     $targetLabel = 'cliente'
     $targetCreated = $false
+    $targetPermissionsAdded = $false
     $targetFiles = @()
     $prevTargets = @()
     $prevTargetFiles = @()
     if ($prev -ne $null) {
         if ($prev.PSObject.Properties['targetFileCreated']) { $targetCreated = [bool]$prev.targetFileCreated }
+        if ($prev.PSObject.Properties['targetPermissionsAdded']) { $targetPermissionsAdded = [bool]$prev.targetPermissionsAdded }
         if ($prev.PSObject.Properties['targets']) { $prevTargets = @(@($prev.targets) | Where-Object { $_ }) }
         if ($prev.PSObject.Properties['targetFiles']) { $prevTargetFiles = @(@($prev.targetFiles) | Where-Object { $_ }) }
     }
@@ -290,12 +292,19 @@ function Install-Project {
                             $cfg.$key = @(@($cfg.$key) | Where-Object { $_ -ne ".baseline/AGENTS.md" -and $_ -ne '.baseline/skills' })
                         }
                     }
+                    if ($prev.PSObject.Properties['targetPermissionsAdded'] -and $prev.targetPermissionsAdded -and $cfg.PSObject.Properties['permissions']) {
+                        $tpl = Get-Content -LiteralPath (Join-Path $Root 'templates/targets/opencode.json') -Raw | ConvertFrom-Json
+                        if (($cfg.permissions | ConvertTo-Json -Depth 10 -Compress) -eq ($tpl.permissions | ConvertTo-Json -Depth 10 -Compress)) {
+                            $cfg.PSObject.Properties.Remove('permissions')
+                        }
+                    }
                     Write-Utf8 $oldCfg ($cfg | ConvertTo-Json -Depth 10)
                     Write-Host "  entradas de opencode.json quitadas (target anterior)"
                 }
             } else {
                 $targetCreated = $false
             }
+            $targetPermissionsAdded = $false
         }
         foreach ($rel in $prevTargetFiles) {
             $oldPointer = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
@@ -319,7 +328,14 @@ function Install-Project {
     if ($Target -eq 'opencode') {
         $targetLabel = 'opencode.json'
         $cfgPath = Join-Path $Path 'opencode.json'
-        if (-not (Test-Path -LiteralPath $cfgPath)) { $targetCreated = $true }
+        $hadPermissions = $false
+        if (Test-Path -LiteralPath $cfgPath) {
+            $existingCfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
+            $hadPermissions = [bool]$existingCfg.PSObject.Properties['permissions']
+        } else {
+            $targetCreated = $true
+        }
+        if (-not $hadPermissions) { $targetPermissionsAdded = $true }
         Backup-File -Path $cfgPath -BackupDir $backupDir
         $targetState = Merge-OpenCode -ProjectPath $Path
     }
@@ -352,6 +368,7 @@ function Install-Project {
         skills            = @($SkillList)
         targets           = @($Target)
         targetFileCreated = $targetCreated
+        targetPermissionsAdded = $targetPermissionsAdded
         targetFiles       = @($targetFiles)
         files             = $files
     }
@@ -443,6 +460,13 @@ function Remove-Project {
             foreach ($key in @('instructions', 'skills')) {
                 if ($cfg.PSObject.Properties[$key]) {
                     $cfg.$key = @(@($cfg.$key) | Where-Object { $_ -ne ".baseline/AGENTS.md" -and $_ -ne '.baseline/skills' })
+                }
+            }
+            if ($m -ne $null -and $m.PSObject.Properties['targetPermissionsAdded'] -and $m.targetPermissionsAdded -and $cfg.PSObject.Properties['permissions']) {
+                $tpl = Get-Content -LiteralPath (Join-Path $Root 'templates/targets/opencode.json') -Raw | ConvertFrom-Json
+                if (($cfg.permissions | ConvertTo-Json -Depth 10 -Compress) -eq ($tpl.permissions | ConvertTo-Json -Depth 10 -Compress)) {
+                    $cfg.PSObject.Properties.Remove('permissions')
+                    Write-Host "  permissions del instalador quitados de opencode.json"
                 }
             }
             Write-Utf8 $cfgPath ($cfg | ConvertTo-Json -Depth 10)

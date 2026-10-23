@@ -143,6 +143,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 - `-Update` respalda `.baseline/` completo en `.baseline-backup/<fecha>/`.
 - Targets `opencode`, `cline` y `kilo`: crean su archivo al instalar y lo eliminan al desinstalar; la carga en cada cliente sigue sin verificarse.
 - Cambio de target: `cline`→`none` y `cline`→`kilo` retiran el puntero anterior; `opencode`→`none` retira `opencode.json`; `-Uninstall` elimina un `.clinerules` huérfano que ya no estaba en el manifiesto.
+- `opencode.json` fusionado: el manifiesto registra `targetPermissionsAdded`; al desinstalar se quitan los `permissions` añadidos si siguen iguales a la plantilla, y se conservan si el usuario los modificó.
 - Instalación real revisada y desinstalada (`LaserBoy-Arduino-2`, 2026-10-23): quedó sin `.baseline`, `.baseline.json` ni `opencode.json`, y su `README.md` y `DEVELOPMENT.md` no cambiaron.
 - **Sin verificar**: la carga real de `opencode.json`, de los punteros de Cline/Kilo y de las skills por sus clientes (no hay ninguno instalado); tampoco se probó `-Workspace` en esta sesión ni la ejecución nativa en Linux/macOS (solo se corrigieron las rutas).
 

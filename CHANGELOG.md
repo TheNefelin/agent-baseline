@@ -23,6 +23,7 @@ Criterio de versión:
 - El manifiesto hashea `.baseline/VERSION` y cada `references/*.md`; `-Doctor` detecta ediciones a mano en las referencias.
 - `-Doctor` avisa si el manifiesto está incompleto (sin `VERSION` o con archivos de `.baseline/` sin hash) y recuerda correr `-Update`.
 - Cambiar de target con `-Update` quita el archivo del target anterior (con backup); `-Uninstall` también reconoce los punteros conocidos de Cline/Kilo aunque no estén en el manifiesto.
+- `-Uninstall` quita los `permissions` que el instalador añadió a un `opencode.json` existente, solo si siguen idénticos a la plantilla.
 - `install.ps1` termina con `exit 0` en el flujo correcto, así `$LASTEXITCODE` queda en 0.
 - `-Update` respalda `.baseline/` completo: antes `Copy-Item` copiaba el directorio sin su contenido.
 - Una instalación sin cliente informa `cliente: none` en vez de `opencode.json: none`.
