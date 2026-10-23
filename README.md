@@ -40,7 +40,7 @@ Qué deja en el proyecto:
 frontend/
 ├── .baseline/            AGENTS.md, VERSION y las skills instaladas
 ├── .baseline.json        manifiesto: versión, skills, hashes
-├── AGENTS.md             puntero de 4 líneas a .baseline/AGENTS.md
+├── AGENTS.md             puntero corto a .baseline/AGENTS.md
 ├── opencode.json         opcional: config del cliente con -Target opencode
 └── .baseline-backup/     respaldo de lo que se reemplazó
 ```
@@ -54,11 +54,43 @@ Si el proyecto no existe o no tiene stack reconocible, el instalador pregunta an
 .\tools\install.ps1 -Project . -Uninstall     # quitar solo lo instalado
 ```
 
+### Instalar desde GitHub
+
+Si no tienes el catálogo clonado, instálalo en el proyecto desde el repo:
+
+```powershell
+git clone --depth 1 https://github.com/TheNefelin/agent-baseline.git "$env:TEMP\agent-baseline"
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+& "$env:TEMP\agent-baseline\tools\install.ps1" -Project . -Skills angular -WhatIf
+& "$env:TEMP\agent-baseline\tools\install.ps1" -Project . -Skills angular
+```
+
+Sin git, descarga el ZIP:
+
+```powershell
+Invoke-WebRequest "https://github.com/TheNefelin/agent-baseline/archive/refs/heads/main.zip" -OutFile "$env:TEMP\agent-baseline.zip"
+Expand-Archive "$env:TEMP\agent-baseline.zip" "$env:TEMP" -Force
+& "$env:TEMP\agent-baseline-main\tools\install.ps1" -Project . -Skills angular
+```
+
+`main` es una rama móvil: para reproducibilidad, fija un commit o un tag en lugar de la rama.
+
+**Prompt para un agente** (pégalo en el chat del proyecto):
+
+```text
+Instala agent-baseline desde https://github.com/TheNefelin/agent-baseline en este proyecto.
+Clona el repo en una carpeta temporal y ejecuta tools/install.ps1 -Project . -Skills <skills> -WhatIf.
+Revisa el plan y, si es correcto, instálalo. Verifica con -Doctor. Deja -Target none salvo que te pida
+un cliente. No hagas commit ni push.
+```
+
+`-Update` y `-Doctor` necesitan el catálogo de nuevo: el proyecto solo conserva `.baseline/` y su manifiesto.
+
 **Modo manual** (si prefieres no ejecutar nada): copia `AGENTS.md` y las skills que uses a `<proyecto>/.baseline/`, y crea un `AGENTS.md` en la raíz que apunte ahí. En un proyecto nuevo, copia además `templates/DEVELOPMENT.md` y completa el mapa.
 
 ## Uso con agentes
 
-El formato es `AGENTS.md` + carpeta `skills/` con `SKILL.md` dentro. Eso lo leen openCode, Cline, Kilo Code, Codex y Cursor (los tres últimos mediante un archivo puntero en su directorio de reglas).
+El formato es `AGENTS.md` + carpeta `skills/` con `SKILL.md` dentro. Eso lo leen openCode, Cline, Kilo Code, Codex y Cursor. Cline y Kilo reciben un puntero en su directorio de reglas; openCode, Codex y Cursor leen `AGENTS.md` directamente (openCode además puede usar `opencode.json`).
 
 La regla es una sola: **la fuente es única**. El contenido vive en `AGENTS.md`; los demás clientes reciben un puntero, nunca una copia.
 
@@ -96,7 +128,7 @@ Sale `0` si todo está bien, `1` si algo falla. Es el mismo comando que se usa e
 | `check.ps1` | frontmatter, referencias, solapamiento, evals, frescura, encoding, inventario |
 | `budget.ps1` | tokens por skill y por descripción |
 | `memory.ps1` | rutas del mapa de `DEVELOPMENT.md` que existan |
-| `verify.ps1` | los tres, agregados |
+| `verify.ps1` | los cuatro, agregados |
 
 ## Cómo agregar una skill
 

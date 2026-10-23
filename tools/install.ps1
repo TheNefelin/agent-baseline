@@ -67,6 +67,14 @@ function Assert-Skills {
     }
 }
 
+function Assert-Target {
+    param([string]$Value)
+    $valid = @('none', 'opencode', 'cline', 'kilo')
+    if ($valid -notcontains $Value) {
+        Fail ("Target desconocido: {0}. Validos: {1}" -f $Value, ($valid -join ', '))
+    }
+}
+
 function Detect-Skills {
     param([string]$Path)
     $found = New-Object System.Collections.Generic.List[string]
@@ -159,6 +167,7 @@ function Install-Project {
 
     if (-not (Test-Path -LiteralPath $Path)) { Fail "No existe la ruta: $Path" }
     Assert-Skills -SkillList $SkillList
+    Assert-Target -Value $Target
     $payload = Join-Path $Path $PayloadDir
     $manifestPath = Join-Path $Path $ManifestName
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -182,9 +191,21 @@ function Install-Project {
         Write-Host "Plan (no se escribe nada):" -ForegroundColor Yellow
         Write-Host ("  crear {0}\AGENTS.md y {0}\VERSION" -f $PayloadDir)
         foreach ($s in $SkillList) { Write-Host ("  copiar {0}\skills\{1}" -f $PayloadDir, $s) }
+        if ($Update) {
+            $existingSkills = @(Get-ChildItem -LiteralPath (Join-Path $payload 'skills') -Directory -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty Name)
+            foreach ($s in $existingSkills) {
+                if (@($SkillList) -notcontains $s) { Write-Host ("  quitar {0}\skills\{1}" -f $PayloadDir, $s) }
+            }
+        }
         Write-Host ("  escribir {0}" -f $ManifestName)
         Write-Host "  crear o fusionar AGENTS.md en la raiz"
         if ($Target -eq 'opencode') { Write-Host "  crear o fusionar opencode.json" }
+        elseif ($Target -eq 'cline' -or $Target -eq 'kilo') {
+            $rel = '.clinerules\agent-baseline.md'
+            if ($Target -eq 'kilo') { $rel = '.kilocode\rules\agent-baseline.md' }
+            Write-Host ("  crear {0}" -f $rel)
+        }
         return
     }
 
@@ -195,11 +216,22 @@ function Install-Project {
 
     $skillsDst = Join-Path $payload 'skills'
     New-Item -ItemType Directory -Force -Path $skillsDst | Out-Null
+    if ($Update) {
+        foreach ($dir in @(Get-ChildItem -LiteralPath $skillsDst -Directory)) {
+            if (@($SkillList) -notcontains $dir.Name) {
+                Remove-Item -LiteralPath $dir.FullName -Recurse -Force
+                Write-Host ("  quitar skill no declarada: {0}" -f $dir.Name)
+            }
+        }
+    }
     foreach ($s in $SkillList) {
         $src = Join-Path (Join-Path (Join-Path $Root 'skills') $s) 'SKILL.md'
         if (-not (Test-Path -LiteralPath $src)) { Fail "Skill desconocida: $s" }
         $srcDir = Split-Path $src -Parent
         $dst = Join-Path $skillsDst $s
+        if ($Update -and (Test-Path -LiteralPath $dst)) {
+            Remove-Item -LiteralPath $dst -Recurse -Force
+        }
         New-Item -ItemType Directory -Force -Path $dst | Out-Null
         Copy-Item -Path (Join-Path $srcDir '*') -Destination $dst -Recurse -Force
         if (-not (Test-Path -LiteralPath (Join-Path $dst 'SKILL.md'))) { Fail "No se pudo copiar la skill: $s" }
@@ -399,6 +431,22 @@ function Test-Doctor {
         } else {
             Write-Host ("OK     {0}" -f $rel) -ForegroundColor Green
         }
+    }
+    $manifestFiles = @($m.files.PSObject.Properties | ForEach-Object { $_.Name })
+    $payload = Join-Path $Path $PayloadDir
+    $incomplete = @()
+    if ($manifestFiles -notcontains '.baseline/VERSION') { $incomplete += 'falta .baseline/VERSION' }
+    if (Test-Path -LiteralPath $payload) {
+        $actualFiles = @(Get-ChildItem -LiteralPath $payload -Recurse -File |
+            ForEach-Object { '.baseline/' + ($_.FullName.Substring($payload.Length + 1) -replace '\\', '/') })
+        $extraFiles = @($actualFiles | Where-Object { $manifestFiles -notcontains $_ -and $_ -ne '.baseline/VERSION' })
+        if ($extraFiles.Count -gt 0) {
+            $sample = ($extraFiles | Select-Object -First 3) -join ', '
+            $incomplete += ("{0} archivo(s) sin hash (p. ej. {1})" -f $extraFiles.Count, $sample)
+        }
+    }
+    if ($incomplete.Count -gt 0) {
+        Write-Host ("AVISO  manifiesto incompleto: {0}. Corre -Update." -f ($incomplete -join '; ')) -ForegroundColor Yellow
     }
     $installed = $m.baselineVersion
     if ($installed -ne $Version) {

@@ -61,6 +61,8 @@ templates/                       plantillas de proyecto y de workspace
 | 2026-10-23 | Propuesto | `harness/skills/` ignorado en git y materializado con `-Update` | Diffs limpios; falta confirmarlo con el instalador |
 | 2026-10-23 | Aceptado | `-Target` por defecto `none`: el instalador no asume ningún cliente | Sin cliente pedido no debe escribir archivos que el proyecto no usa |
 | 2026-10-23 | Aceptado | El manifiesto hashea todo `.baseline/` (incluye `VERSION` y `references/*.md`) | `-Doctor` debe detectar cualquier deriva, no solo la de `SKILL.md` |
+| 2026-10-23 | Aceptado | Validar `-Skills` y `-Target` antes de escribir | Un typo no debe dejar `.baseline/` a medias |
+| 2026-10-23 | Aceptado | `-Update` deja `skills/` como espejo: reemplaza las declaradas y quita las demás | `.baseline/skills/` y el campo `skills` del manifiesto deben describir el mismo conjunto |
 | 2026-10-23 | Pendiente | Verificar `opencode.json` contra un OpenCode v2 real | El template usa el esquema v2; sin cliente instalado no se probó la carga ni los permisos |
 
 ## Plantillas
@@ -90,8 +92,8 @@ Todo lo que está en `targets/` es **específico de un cliente**. El catálogo (
 | `-Project <ruta>` | copia `.baseline/` (AGENTS.md, VERSION, skills), escribe el manifiesto y el puntero `AGENTS.md` |
 | `-Target <cliente>` | cliente a configurar: `none` (por defecto), `opencode`, `cline` o `kilo`; con `none` no escribe archivos de cliente |
 | `-Workspace <ruta>` | escribe `AGENTS.md` de ruteo y `DEVELOPMENT.md` de composición; no copia skills |
-| `-Update` | lee `.baseline.json`, refresca **esas** skills y **ese** target, y reescribe el manifiesto conservando lo previo |
-| `-Doctor` | compara hashes del manifiesto y avisa si la versión instalada quedó atrás |
+| `-Update` | lee `.baseline.json`, refresca el conjunto declarado (reemplaza cada skill y quita las no incluidas) y reescribe el manifiesto conservando el target |
+| `-Doctor` | compara hashes, avisa de derivas y de manifiestos incompletos, y si la versión instalada quedó atrás |
 | `-Uninstall` | quita `.baseline/`, el puntero, y `opencode.json` si lo creó el instalador; conserva la memoria |
 | `-WhatIf` | imprime el plan sin escribir |
 
@@ -130,13 +132,17 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 - Peor caso por request: **~6.359 tokens** (`fastapi` con su description).
 - Catálogo en disco: ~44.019 tokens (suma de cuerpos, sin references).
 - `AGENTS.md`: 222 → 112 líneas, con regla de desempate entre skills, ruteo de workspace y las cuatro reglas recuperadas del repo.
-- Ciclo completo en un proyecto temporal con `.git` y `angular.json`: `install` (target `none`) → `-Update` → `-Doctor` → `-Uninstall`, sin errores; al final solo quedan `.git`, `angular.json` y `.baseline-backup/`.
+- Ciclo completo en un proyecto temporal con `.git` y `angular.json` (v0.1.1): `install` (target `none`) → `-Update` → `-Doctor` → `-Uninstall`, sin errores; al final solo quedan `.git`, `angular.json` y `.baseline-backup/`.
 - `-Skills` inválida se rechaza antes de escribir: exit 1, lista de skills válidas y carpeta intacta.
+- `-Target` inválido se rechaza antes de escribir, también con `-WhatIf`; el plan de `cline`/`kilo` muestra el puntero que crearía.
+- `-Update` de 2 skills a 1 quita la no declarada, la conserva en `.baseline-backup/` y deja el manifiesto con las 10 entradas de la skill restante.
+- `-Doctor` avisa de manifiesto incompleto: falta `.baseline/VERSION` o hay archivos de `.baseline/` sin hash.
 - Manifiesto completo: `.baseline/VERSION` y cada `references/*.md`; editar un reference a mano hace que `-Doctor` lo reporte como modificado.
 - Tras una instalación correcta, `$LASTEXITCODE` vale 0.
 - `-Update` respalda `.baseline/` completo en `.baseline-backup/<fecha>/`.
+- Target `opencode`: crea `opencode.json` al instalar y lo elimina al desinstalar; la carga en el cliente sigue sin verificarse.
 - Instalación real revisada y desinstalada (`LaserBoy-Arduino-2`, 2026-10-23): quedó sin `.baseline`, `.baseline.json` ni `opencode.json`, y su `README.md` y `DEVELOPMENT.md` no cambiaron.
-- **Sin verificar**: la carga real de `opencode.json` y de las skills por un cliente OpenCode (no hay `opencode` instalado); tampoco se probaron en esta sesión `-Workspace` ni los targets `cline`/`kilo`.
+- **Sin verificar**: la carga real de `opencode.json` y de las skills por un cliente OpenCode (no hay `opencode` instalado); tampoco se probaron en esta sesión `-Workspace` ni las instalaciones con `cline`/`kilo` (solo su plan con `-WhatIf`).
 
 ## Pendientes
 
