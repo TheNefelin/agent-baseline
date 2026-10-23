@@ -32,6 +32,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\tools\install.ps1 -Project D:\Repo\frontend -Skills angular
 ```
 
+Por defecto `-Target none`: no escribe archivos de cliente. Agrega `-Target opencode` (o `cline`/`kilo`) si quieres configurarlo.
+
 Qué deja en el proyecto:
 
 ```text
@@ -39,7 +41,7 @@ frontend/
 ├── .baseline/            AGENTS.md, VERSION y las skills instaladas
 ├── .baseline.json        manifiesto: versión, skills, hashes
 ├── AGENTS.md             puntero de 4 líneas a .baseline/AGENTS.md
-├── opencode.json         config del cliente (creada o fusionada)
+├── opencode.json         opcional: config del cliente con -Target opencode
 └── .baseline-backup/     respaldo de lo que se reemplazó
 ```
 

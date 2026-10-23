@@ -16,7 +16,7 @@
     Skills a instalar, separadas por coma. Si se omite, se detectan por marcadores.
 
 .PARAMETER Target
-    Cliente a configurar: opencode (por defecto) o none.
+    Cliente a configurar: none (por defecto), opencode, cline o kilo.
 
 .EXAMPLE
     .\tools\install.ps1 -Project D:\Repo\frontend -Skills angular
@@ -29,7 +29,7 @@ param(
     [string]$Project,
     [string]$Workspace,
     [string[]]$Skills,
-    [string]$Target = 'opencode',
+    [string]$Target = 'none',
     [switch]$Update,
     [switch]$Uninstall,
     [switch]$Doctor,
@@ -54,6 +54,17 @@ function Get-Sha { param([string]$Path) (Get-FileHash -LiteralPath $Path -Algori
 function Get-SkillNames {
     Get-ChildItem -LiteralPath (Join-Path $Root 'skills') -Directory |
         Sort-Object Name | Select-Object -ExpandProperty Name
+}
+
+function Assert-Skills {
+    param([string[]]$SkillList)
+    $valid = @(Get-SkillNames)
+    foreach ($s in @($SkillList)) {
+        if ([string]::IsNullOrWhiteSpace($s)) { continue }
+        if ($valid -notcontains $s) {
+            Fail ("Skill desconocida: {0}. Validas: {1}" -f $s, ($valid -join ', '))
+        }
+    }
 }
 
 function Detect-Skills {
@@ -88,7 +99,13 @@ function Backup-File {
     param([string]$Path, [string]$BackupDir)
     if (-not (Test-Path -LiteralPath $Path)) { return }
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
-    Copy-Item -LiteralPath $Path -Destination (Join-Path $BackupDir (Split-Path $Path -Leaf)) -Force
+    $item = Get-Item -LiteralPath $Path
+    $dest = Join-Path $BackupDir (Split-Path $Path -Leaf)
+    if ($item.PSIsContainer) {
+        Copy-Item -LiteralPath $Path -Destination $dest -Recurse -Force
+    } else {
+        Copy-Item -LiteralPath $Path -Destination $dest -Force
+    }
 }
 
 function Merge-Pointer {
@@ -141,6 +158,7 @@ function Install-Project {
     param([string]$Path, [string[]]$SkillList)
 
     if (-not (Test-Path -LiteralPath $Path)) { Fail "No existe la ruta: $Path" }
+    Assert-Skills -SkillList $SkillList
     $payload = Join-Path $Path $PayloadDir
     $manifestPath = Join-Path $Path $ManifestName
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -196,11 +214,12 @@ function Install-Project {
     Write-Utf8 $rootAgents (Merge-Pointer $existingPointer)
 
     $targetState = 'none'
-    $targetLabel = 'opencode.json'
+    $targetLabel = 'cliente'
     $targetCreated = $false
     $targetFiles = @()
     if ($prev -ne $null -and $prev.PSObject.Properties['targetFileCreated']) { $targetCreated = [bool]$prev.targetFileCreated }
     if ($Target -eq 'opencode') {
+        $targetLabel = 'opencode.json'
         $cfgPath = Join-Path $Path 'opencode.json'
         if (-not (Test-Path -LiteralPath $cfgPath)) { $targetCreated = $true }
         Backup-File -Path $cfgPath -BackupDir $backupDir
@@ -221,10 +240,10 @@ function Install-Project {
         Fail "Target desconocido: $Target. Validos: opencode, cline, kilo, none."
     }
 
-    $files = @{}
-    $files['.baseline/AGENTS.md'] = Get-Sha (Join-Path $payload 'AGENTS.md')
-    foreach ($s in $SkillList) {
-        $files[".baseline/skills/$s/SKILL.md"] = Get-Sha (Join-Path (Join-Path $skillsDst $s) 'SKILL.md')
+    $files = [ordered]@{}
+    foreach ($f in @(Get-ChildItem -LiteralPath $payload -Recurse -File | Sort-Object FullName)) {
+        $rel = '.baseline/' + (($f.FullName.Substring($payload.Length + 1)) -replace '\\', '/')
+        $files[$rel] = Get-Sha $f.FullName
     }
 
     $manifest = [ordered]@{
@@ -455,3 +474,4 @@ if (-not $Skills -or $Skills.Count -eq 0) {
 }
 
 Install-Project -Path $targetPath -SkillList $Skills
+exit 0

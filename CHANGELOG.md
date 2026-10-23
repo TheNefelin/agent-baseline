@@ -8,6 +8,24 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [Unreleased]
+
+### Cambiado
+
+- `-Target` por defecto `none`: el instalador ya no crea `opencode.json` ni punteros de Cline/Kilo sin pedirlo.
+
+### Corregido
+
+- `-Skills` se valida antes de crear nada: una skill inexistente sale con 1, lista las válidas y no deja `.baseline/` ni el puntero a medias.
+- El manifiesto hashea `.baseline/VERSION` y cada `references/*.md`; `-Doctor` detecta ediciones a mano en las referencias.
+- `install.ps1` termina con `exit 0` en el flujo correcto, así `$LASTEXITCODE` queda en 0.
+- `-Update` respalda `.baseline/` completo: antes `Copy-Item` copiaba el directorio sin su contenido.
+- Una instalación sin cliente informa `cliente: none` en vez de `opencode.json: none`.
+
+### Notas
+
+- `opencode.json` mantiene el esquema de OpenCode v2; sin cliente instalado no se verificó su carga. Queda como pendiente en `DEVELOPMENT.md`.
+
 ## [0.1.0] - 2026-10-23
 
 ### Añadido
