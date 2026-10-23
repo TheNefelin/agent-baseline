@@ -84,7 +84,7 @@ function Detect-Skills {
     }
     if (Test-Path -LiteralPath (Join-Path $Path 'Dockerfile')) { $found.Add('docker') }
     if (Test-Path -LiteralPath (Join-Path $Path 'docker-compose.yml')) { $found.Add('docker') }
-    if (Test-Path -LiteralPath (Join-Path $Path '.github\workflows')) { $found.Add('github-actions') }
+    if (Test-Path -LiteralPath (Join-Path $Path '.github/workflows')) { $found.Add('github-actions') }
     if (Test-Path -LiteralPath (Join-Path $Path 'Chart.yaml')) { $found.Add('kubernetes') }
     Get-ChildItem -LiteralPath $Path -Filter *.csproj -ErrorAction SilentlyContinue | ForEach-Object { if ($found -notcontains 'dotnet') { $found.Add('dotnet') } }
     return @($found | Select-Object -Unique)
@@ -116,6 +116,23 @@ function Backup-File {
     }
 }
 
+function Remove-PointerFile {
+    param([string]$Path, [string]$Label)
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    $text = [System.IO.File]::ReadAllText($Path)
+    if ($text -notmatch 'agent-baseline') { return }
+    Remove-Item -LiteralPath $Path -Force
+    Write-Host ("  puntero eliminado: {0}" -f $Label)
+    $parentDir = Split-Path $Path -Parent
+    if ((Test-Path -LiteralPath $parentDir) -and @(Get-ChildItem -LiteralPath $parentDir -Force).Count -eq 0) {
+        Remove-Item -LiteralPath $parentDir -Force
+        $grandDir = Split-Path $parentDir -Parent
+        if ((Split-Path $grandDir -Leaf) -eq '.kilocode' -and (Test-Path -LiteralPath $grandDir) -and @(Get-ChildItem -LiteralPath $grandDir -Force).Count -eq 0) {
+            Remove-Item -LiteralPath $grandDir -Force
+        }
+    }
+}
+
 function Merge-Pointer {
     param([string]$Existing)
     $startMarker = '<!-- agent-baseline:start -->'
@@ -132,7 +149,7 @@ function Merge-Pointer {
 function Merge-OpenCode {
     param([string]$ProjectPath)
     $cfgPath = Join-Path $ProjectPath 'opencode.json'
-    $templatePath = Join-Path $Root 'templates\targets\opencode.json'
+    $templatePath = Join-Path $Root 'templates/targets/opencode.json'
     if (Test-Path -LiteralPath $cfgPath) {
         $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
     } else {
@@ -189,21 +206,21 @@ function Install-Project {
     if ($WhatIf) {
         Write-Host ""
         Write-Host "Plan (no se escribe nada):" -ForegroundColor Yellow
-        Write-Host ("  crear {0}\AGENTS.md y {0}\VERSION" -f $PayloadDir)
-        foreach ($s in $SkillList) { Write-Host ("  copiar {0}\skills\{1}" -f $PayloadDir, $s) }
+        Write-Host ("  crear {0}/AGENTS.md y {0}/VERSION" -f $PayloadDir)
+        foreach ($s in $SkillList) { Write-Host ("  copiar {0}/skills/{1}" -f $PayloadDir, $s) }
         if ($Update) {
             $existingSkills = @(Get-ChildItem -LiteralPath (Join-Path $payload 'skills') -Directory -ErrorAction SilentlyContinue |
                 Select-Object -ExpandProperty Name)
             foreach ($s in $existingSkills) {
-                if (@($SkillList) -notcontains $s) { Write-Host ("  quitar {0}\skills\{1}" -f $PayloadDir, $s) }
+                if (@($SkillList) -notcontains $s) { Write-Host ("  quitar {0}/skills/{1}" -f $PayloadDir, $s) }
             }
         }
         Write-Host ("  escribir {0}" -f $ManifestName)
         Write-Host "  crear o fusionar AGENTS.md en la raiz"
         if ($Target -eq 'opencode') { Write-Host "  crear o fusionar opencode.json" }
         elseif ($Target -eq 'cline' -or $Target -eq 'kilo') {
-            $rel = '.clinerules\agent-baseline.md'
-            if ($Target -eq 'kilo') { $rel = '.kilocode\rules\agent-baseline.md' }
+            $rel = '.clinerules/agent-baseline.md'
+            if ($Target -eq 'kilo') { $rel = '.kilocode/rules/agent-baseline.md' }
             Write-Host ("  crear {0}" -f $rel)
         }
         return
@@ -249,7 +266,56 @@ function Install-Project {
     $targetLabel = 'cliente'
     $targetCreated = $false
     $targetFiles = @()
-    if ($prev -ne $null -and $prev.PSObject.Properties['targetFileCreated']) { $targetCreated = [bool]$prev.targetFileCreated }
+    $prevTargets = @()
+    $prevTargetFiles = @()
+    if ($prev -ne $null) {
+        if ($prev.PSObject.Properties['targetFileCreated']) { $targetCreated = [bool]$prev.targetFileCreated }
+        if ($prev.PSObject.Properties['targets']) { $prevTargets = @(@($prev.targets) | Where-Object { $_ }) }
+        if ($prev.PSObject.Properties['targetFiles']) { $prevTargetFiles = @(@($prev.targetFiles) | Where-Object { $_ }) }
+    }
+
+    if ($Update -and $prev -ne $null -and ($prevTargets -notcontains $Target)) {
+        if ($prevTargets -contains 'opencode') {
+            $oldCfg = Join-Path $Path 'opencode.json'
+            if (Test-Path -LiteralPath $oldCfg) {
+                Backup-File -Path $oldCfg -BackupDir $backupDir
+                if ($targetCreated) {
+                    Remove-Item -LiteralPath $oldCfg -Force
+                    Write-Host "  quitar opencode.json (target anterior)"
+                    $targetCreated = $false
+                } else {
+                    $cfg = Get-Content -LiteralPath $oldCfg -Raw | ConvertFrom-Json
+                    foreach ($key in @('instructions', 'skills')) {
+                        if ($cfg.PSObject.Properties[$key]) {
+                            $cfg.$key = @(@($cfg.$key) | Where-Object { $_ -ne ".baseline/AGENTS.md" -and $_ -ne '.baseline/skills' })
+                        }
+                    }
+                    Write-Utf8 $oldCfg ($cfg | ConvertTo-Json -Depth 10)
+                    Write-Host "  entradas de opencode.json quitadas (target anterior)"
+                }
+            } else {
+                $targetCreated = $false
+            }
+        }
+        foreach ($rel in $prevTargetFiles) {
+            $oldPointer = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
+            if (Test-Path -LiteralPath $oldPointer) {
+                Backup-File -Path $oldPointer -BackupDir $backupDir
+                Remove-PointerFile -Path $oldPointer -Label $rel
+            }
+        }
+        $knownPointers = @()
+        if ($prevTargets -contains 'cline') { $knownPointers += '.clinerules/agent-baseline.md' }
+        if ($prevTargets -contains 'kilo') { $knownPointers += '.kilocode/rules/agent-baseline.md' }
+        foreach ($rel in $knownPointers) {
+            $oldPointer = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
+            if (Test-Path -LiteralPath $oldPointer) {
+                Backup-File -Path $oldPointer -BackupDir $backupDir
+                Remove-PointerFile -Path $oldPointer -Label $rel
+            }
+        }
+    }
+
     if ($Target -eq 'opencode') {
         $targetLabel = 'opencode.json'
         $cfgPath = Join-Path $Path 'opencode.json'
@@ -258,12 +324,12 @@ function Install-Project {
         $targetState = Merge-OpenCode -ProjectPath $Path
     }
     elseif ($Target -eq 'cline' -or $Target -eq 'kilo') {
-        $rel = '.clinerules\agent-baseline.md'
-        if ($Target -eq 'kilo') { $rel = '.kilocode\rules\agent-baseline.md' }
+        $rel = '.clinerules/agent-baseline.md'
+        if ($Target -eq 'kilo') { $rel = '.kilocode/rules/agent-baseline.md' }
         $pointerPath = Join-Path $Path $rel
         Backup-File -Path $pointerPath -BackupDir $backupDir
         New-Item -ItemType Directory -Force -Path (Split-Path $pointerPath -Parent) | Out-Null
-        Copy-Item -LiteralPath (Join-Path $Root ("templates\targets\$Target.md")) -Destination $pointerPath -Force
+        Copy-Item -LiteralPath (Join-Path $Root ("templates/targets/$Target.md")) -Destination $pointerPath -Force
         $targetFiles += $rel
         $targetLabel = $rel
         $targetState = 'puntero'
@@ -293,8 +359,8 @@ function Install-Project {
 
     Write-Host ""
     Write-Host "Instalado." -ForegroundColor Green
-    Write-Host ("  {0}\AGENTS.md" -f $PayloadDir)
-    Write-Host ("  {0}\skills\{1}" -f $PayloadDir, ($SkillList -join ','))
+    Write-Host ("  {0}/AGENTS.md" -f $PayloadDir)
+    Write-Host ("  {0}/skills/{1}" -f $PayloadDir, ($SkillList -join ','))
     Write-Host ("  {0}" -f $ManifestName)
     Write-Host ("  {0}: {1}" -f $targetLabel, $targetState)
     Write-Host "Abre el agente dentro del proyecto para que lea AGENTS.md."
@@ -317,12 +383,12 @@ function Install-Workspace {
     if (Test-Path -LiteralPath $agents) {
         Backup-File -Path $agents -BackupDir $backupDir
     } else {
-        Copy-Item -LiteralPath (Join-Path $Root 'templates\AGENTS-workspace.md') -Destination $agents -Force
+        Copy-Item -LiteralPath (Join-Path $Root 'templates/AGENTS-workspace.md') -Destination $agents -Force
     }
     if (Test-Path -LiteralPath $dev) {
         Backup-File -Path $dev -BackupDir $backupDir
     } else {
-        Copy-Item -LiteralPath (Join-Path $Root 'templates\DEVELOPMENT-workspace.md') -Destination $dev -Force
+        Copy-Item -LiteralPath (Join-Path $Root 'templates/DEVELOPMENT-workspace.md') -Destination $dev -Force
     }
     Write-Host "Workspace inicializado: AGENTS.md y DEVELOPMENT.md en la raiz." -ForegroundColor Green
 }
@@ -387,23 +453,13 @@ function Remove-Project {
     if ($m -ne $null -and $m.PSObject.Properties['targetFiles']) {
         foreach ($rel in @($m.targetFiles)) {
             if ([string]::IsNullOrWhiteSpace($rel)) { continue }
-            $pointerFile = Join-Path $Path ($rel -replace '/', '\')
-            if (Test-Path -LiteralPath $pointerFile) {
-                $pointerText = [System.IO.File]::ReadAllText($pointerFile)
-                if ($pointerText -match 'agent-baseline') {
-                    Remove-Item -LiteralPath $pointerFile -Force
-                    Write-Host ("  puntero eliminado: {0}" -f $rel)
-                    $parentDir = Split-Path $pointerFile -Parent
-                    if ((Test-Path -LiteralPath $parentDir) -and @(Get-ChildItem -LiteralPath $parentDir -Force).Count -eq 0) {
-                        Remove-Item -LiteralPath $parentDir -Force
-                        $grandDir = Split-Path $parentDir -Parent
-                        if ((Split-Path $grandDir -Leaf) -eq '.kilocode' -and (Test-Path -LiteralPath $grandDir) -and @(Get-ChildItem -LiteralPath $grandDir -Force).Count -eq 0) {
-                            Remove-Item -LiteralPath $grandDir -Force
-                        }
-                    }
-                }
-            }
+            $pointerFile = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
+            Remove-PointerFile -Path $pointerFile -Label $rel
         }
+    }
+    foreach ($rel in @('.clinerules/agent-baseline.md', '.kilocode/rules/agent-baseline.md')) {
+        $pointerFile = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
+        Remove-PointerFile -Path $pointerFile -Label $rel
     }
 
     Write-Host "Listo. La memoria del proyecto (DEVELOPMENT.md, README.md) no se toco." -ForegroundColor Green
@@ -420,7 +476,7 @@ function Test-Doctor {
     Write-Host ("Manifiesto: v{0}, {1}, {2} skill(s)" -f $m.baselineVersion, $m.mode, @($m.skills).Count)
     foreach ($prop in $m.files.PSObject.Properties) {
         $rel = $prop.Name
-        $full = Join-Path $Path ($rel -replace '/', '\')
+        $full = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
         if (-not (Test-Path -LiteralPath $full)) {
             Write-Host ("FALLO  falta {0}" -f $rel) -ForegroundColor Red
             $bad++

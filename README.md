@@ -65,6 +65,16 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 & "$env:TEMP\agent-baseline\tools\install.ps1" -Project . -Skills angular
 ```
 
+En Linux o macOS con PowerShell 7 (`pwsh`):
+
+```bash
+git clone --depth 1 https://github.com/TheNefelin/agent-baseline.git /tmp/agent-baseline
+pwsh /tmp/agent-baseline/tools/install.ps1 -Project . -Skills angular -WhatIf
+pwsh /tmp/agent-baseline/tools/install.ps1 -Project . -Skills angular
+```
+
+`Set-ExecutionPolicy` es exclusivo de Windows; en Linux/macOS no hace falta.
+
 Sin git, descarga el ZIP:
 
 ```powershell

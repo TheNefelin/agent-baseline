@@ -63,6 +63,7 @@ templates/                       plantillas de proyecto y de workspace
 | 2026-10-23 | Aceptado | El manifiesto hashea todo `.baseline/` (incluye `VERSION` y `references/*.md`) | `-Doctor` debe detectar cualquier deriva, no solo la de `SKILL.md` |
 | 2026-10-23 | Aceptado | Validar `-Skills` y `-Target` antes de escribir | Un typo no debe dejar `.baseline/` a medias |
 | 2026-10-23 | Aceptado | `-Update` deja `skills/` como espejo: reemplaza las declaradas y quita las demás | `.baseline/skills/` y el campo `skills` del manifiesto deben describir el mismo conjunto |
+| 2026-10-23 | Aceptado | Cambiar de target con `-Update` retira el target anterior, y `-Uninstall` conoce los punteros de Cline/Kilo | Evitar archivos huérfanos al migrar de cliente |
 | 2026-10-23 | Pendiente | Verificar `opencode.json` contra un OpenCode v2 real | El template usa el esquema v2; sin cliente instalado no se probó la carga ni los permisos |
 
 ## Plantillas
@@ -92,9 +93,9 @@ Todo lo que está en `targets/` es **específico de un cliente**. El catálogo (
 | `-Project <ruta>` | copia `.baseline/` (AGENTS.md, VERSION, skills), escribe el manifiesto y el puntero `AGENTS.md` |
 | `-Target <cliente>` | cliente a configurar: `none` (por defecto), `opencode`, `cline` o `kilo`; con `none` no escribe archivos de cliente |
 | `-Workspace <ruta>` | escribe `AGENTS.md` de ruteo y `DEVELOPMENT.md` de composición; no copia skills |
-| `-Update` | lee `.baseline.json`, refresca el conjunto declarado (reemplaza cada skill y quita las no incluidas) y reescribe el manifiesto conservando el target |
+| `-Update` | lee `.baseline.json`, refresca el conjunto declarado (reemplaza cada skill y quita las no incluidas), cambia el target si se pide —retirando el anterior— y reescribe el manifiesto |
 | `-Doctor` | compara hashes, avisa de derivas y de manifiestos incompletos, y si la versión instalada quedó atrás |
-| `-Uninstall` | quita `.baseline/`, el puntero, y `opencode.json` si lo creó el instalador; conserva la memoria |
+| `-Uninstall` | quita `.baseline/`, el puntero, el archivo del target y los punteros conocidos de Cline/Kilo; conserva la memoria |
 | `-WhatIf` | imprime el plan sin escribir |
 
 **Contrato de uninstall**: borra solo lo que agregó, deja `.baseline-backup/<fecha>/` con lo reemplazado, y nunca toca `.git`, `DEVELOPMENT.md` ni `README.md`.
@@ -140,9 +141,10 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 - Manifiesto completo: `.baseline/VERSION` y cada `references/*.md`; editar un reference a mano hace que `-Doctor` lo reporte como modificado.
 - Tras una instalación correcta, `$LASTEXITCODE` vale 0.
 - `-Update` respalda `.baseline/` completo en `.baseline-backup/<fecha>/`.
-- Target `opencode`: crea `opencode.json` al instalar y lo elimina al desinstalar; la carga en el cliente sigue sin verificarse.
+- Targets `opencode`, `cline` y `kilo`: crean su archivo al instalar y lo eliminan al desinstalar; la carga en cada cliente sigue sin verificarse.
+- Cambio de target: `cline`→`none` y `cline`→`kilo` retiran el puntero anterior; `opencode`→`none` retira `opencode.json`; `-Uninstall` elimina un `.clinerules` huérfano que ya no estaba en el manifiesto.
 - Instalación real revisada y desinstalada (`LaserBoy-Arduino-2`, 2026-10-23): quedó sin `.baseline`, `.baseline.json` ni `opencode.json`, y su `README.md` y `DEVELOPMENT.md` no cambiaron.
-- **Sin verificar**: la carga real de `opencode.json` y de las skills por un cliente OpenCode (no hay `opencode` instalado); tampoco se probaron en esta sesión `-Workspace` ni las instalaciones con `cline`/`kilo` (solo su plan con `-WhatIf`).
+- **Sin verificar**: la carga real de `opencode.json`, de los punteros de Cline/Kilo y de las skills por sus clientes (no hay ninguno instalado); tampoco se probó `-Workspace` en esta sesión ni la ejecución nativa en Linux/macOS (solo se corrigieron las rutas).
 
 ## Pendientes
 

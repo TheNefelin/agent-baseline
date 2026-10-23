@@ -13,6 +13,7 @@ Criterio de versión:
 ### Cambiado
 
 - `-Target` por defecto `none`: el instalador ya no crea `opencode.json` ni punteros de Cline/Kilo sin pedirlo.
+- Rutas portables: el instalador resuelve separadores del sistema; en Linux/macOS requiere `pwsh` (PowerShell 7).
 - `-Update` deja `.baseline/skills/` como espejo del conjunto declarado: reemplaza cada skill instalada y quita las que ya no se declaran.
 
 ### Corregido
@@ -21,6 +22,7 @@ Criterio de versión:
 - `-Target` inválido se rechaza antes de escribir, también en `-WhatIf`; ya no deja una instalación parcial.
 - El manifiesto hashea `.baseline/VERSION` y cada `references/*.md`; `-Doctor` detecta ediciones a mano en las referencias.
 - `-Doctor` avisa si el manifiesto está incompleto (sin `VERSION` o con archivos de `.baseline/` sin hash) y recuerda correr `-Update`.
+- Cambiar de target con `-Update` quita el archivo del target anterior (con backup); `-Uninstall` también reconoce los punteros conocidos de Cline/Kilo aunque no estén en el manifiesto.
 - `install.ps1` termina con `exit 0` en el flujo correcto, así `$LASTEXITCODE` queda en 0.
 - `-Update` respalda `.baseline/` completo: antes `Copy-Item` copiaba el directorio sin su contenido.
 - Una instalación sin cliente informa `cliente: none` en vez de `opencode.json: none`.
