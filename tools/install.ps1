@@ -107,7 +107,7 @@ function Backup-File {
     param([string]$Path, [string]$BackupDir)
     if (-not (Test-Path -LiteralPath $Path)) { return }
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
-    $item = Get-Item -LiteralPath $Path
+    $item = Get-Item -LiteralPath $Path -Force
     $dest = Join-Path $BackupDir (Split-Path $Path -Leaf)
     if ($item.PSIsContainer) {
         Copy-Item -LiteralPath $Path -Destination $dest -Recurse -Force
