@@ -7,8 +7,8 @@ No es un framework ni un generador de apps. Es el **punto de partida** que un re
 ## Qué incluye
 
 - **`AGENTS.md`** — reglas de operación: permisos, Git, idioma, evidencia, flujo, verificación, memoria.
-- **`skills/`** — 16 skills por stack, cada una con un cuerpo corto y referencias que se leen solo cuando hacen falta.
-- **`evals/triggers.json`** — 47 casos que comprueban que cada pedido activa la skill correcta (y que los negativos no activan ninguna).
+- **`skills/`** — skills por stack, cada una con un cuerpo corto y referencias que se leen solo cuando hacen falta.
+- **`evals/triggers.json`** — casos que comprueban que cada pedido activa la skill correcta (y que los negativos no activan ninguna).
 - **`tools/`** — verificación automática: estructura, referencias, solapamiento, frescura, encoding, presupuesto de tokens y memoria.
 - **`templates/`** — plantillas para proyectos: `DEVELOPMENT.md` con mapa, `session.md`, `SKILL.md` y permisos de cliente.
 
@@ -19,7 +19,7 @@ AGENTS.md              reglas de operación
 DEVELOPMENT.md         memoria del catálogo (decisiones y pendientes)
 skills/<nombre>/       SKILL.md + references/
 evals/triggers.json    casos de enrutamiento
-tools/                 check.ps1, budget.ps1, memory.ps1, verify.ps1
+tools/                 check.ps1, budget.ps1, memory.ps1, sync.ps1, test.ps1, verify.ps1, install.ps1
 templates/             plantillas para proyectos nuevos
 ```
 
@@ -42,7 +42,7 @@ frontend/
 ├── .baseline.json        manifiesto: versión, skills, hashes
 ├── AGENTS.md             puntero corto a .baseline/AGENTS.md
 ├── opencode.json         opcional: config del cliente con -Target opencode
-└── .baseline-backup/     respaldo de lo que se reemplazó
+└── .baseline-backup/     respaldo de lo que se reemplazó (ignorado por git)
 ```
 
 Si el proyecto no existe o no tiene stack reconocible, el instalador pregunta antes de asumir. Agrega `-WhatIf` para ver el plan sin escribir nada.
@@ -54,47 +54,13 @@ Si el proyecto no existe o no tiene stack reconocible, el instalador pregunta an
 .\tools\install.ps1 -Project . -Uninstall     # quitar solo lo instalado
 ```
 
-### Instalar desde GitHub
+`-Update` y `-Doctor` necesitan el catálogo original para funcionar. El proyecto solo conserva `.baseline/` y su manifiesto.
 
-Si no tienes el catálogo clonado, instálalo en el proyecto desde el repo:
+**Prompts para el agente** (pégalos en el chat):
 
-```powershell
-git clone --depth 1 https://github.com/TheNefelin/agent-baseline.git "$env:TEMP\agent-baseline"
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-& "$env:TEMP\agent-baseline\tools\install.ps1" -Project . -Skills angular -WhatIf
-& "$env:TEMP\agent-baseline\tools\install.ps1" -Project . -Skills angular
-```
-
-En Linux o macOS con PowerShell 7 (`pwsh`):
-
-```bash
-git clone --depth 1 https://github.com/TheNefelin/agent-baseline.git /tmp/agent-baseline
-pwsh /tmp/agent-baseline/tools/install.ps1 -Project . -Skills angular -WhatIf
-pwsh /tmp/agent-baseline/tools/install.ps1 -Project . -Skills angular
-```
-
-`Set-ExecutionPolicy` es exclusivo de Windows; en Linux/macOS no hace falta.
-
-Sin git, descarga el ZIP:
-
-```powershell
-Invoke-WebRequest "https://github.com/TheNefelin/agent-baseline/archive/refs/heads/main.zip" -OutFile "$env:TEMP\agent-baseline.zip"
-Expand-Archive "$env:TEMP\agent-baseline.zip" "$env:TEMP" -Force
-& "$env:TEMP\agent-baseline-main\tools\install.ps1" -Project . -Skills angular
-```
-
-`main` es una rama móvil: para reproducibilidad, fija un commit o un tag en lugar de la rama.
-
-**Prompt para un agente** (pégalo en el chat del proyecto):
-
-```text
-Instala agent-baseline desde https://github.com/TheNefelin/agent-baseline en este proyecto.
-Clona el repo en una carpeta temporal y ejecuta tools/install.ps1 -Project . -Skills <skills> -WhatIf.
-Revisa el plan y, si es correcto, instálalo. Verifica con -Doctor. Deja -Target none salvo que te pida
-un cliente. No hagas commit ni push.
-```
-
-`-Update` y `-Doctor` necesitan el catálogo de nuevo: el proyecto solo conserva `.baseline/` y su manifiesto.
+- **Instalar:** `Instala agent-baseline en este proyecto. Usa tools/install.ps1 -Project ., detecta o pregunta las skills, deja -Target none salvo que te lo pida explícitamente. Revisa con -WhatIf primero, verifica con -Doctor tras instalar. No hagas commit ni push.`
+- **Actualizar:** `Actualiza agent-baseline en este proyecto con -Update usando el manifiesto actual. Revisa con -Doctor tras actualizar. No hagas commit ni push.`
+- **Desinstalar:** `Desinstala agent-baseline de este proyecto con -Uninstall. Conserva AGENTS.md/development si no son del instalador, respeta opencode.json fusionado y no toques memoria del proyecto. No hagas commit ni push.`
 
 **Modo manual** (si prefieres no ejecutar nada): copia `AGENTS.md` y las skills que uses a `<proyecto>/.baseline/`, y crea un `AGENTS.md` en la raíz que apunte ahí. En un proyecto nuevo, copia además `templates/DEVELOPMENT.md` y completa el mapa.
 
@@ -106,23 +72,9 @@ La regla es una sola: **la fuente es única**. El contenido vive en `AGENTS.md`;
 
 ## Workspace con varios proyectos
 
-Si la carpeta contiene varios proyectos independientes (cada uno con su `.git`), no se instala en la raíz como si fuera uno más. El modelo es de **dos niveles**:
-
-- **Cada proyecto**: su `AGENTS.md`, sus skills y su `DEVELOPMENT.md`. Autosuficiente: se puede mover, abrir solo o pasar a otra carpeta.
-- **La raíz**: un `AGENTS.md` de ruteo y un `DEVELOPMENT.md` de composición (qué proyectos hay, cómo se hablan, qué se decidió en transversal). Sin catálogo completo salvo que trabajes siempre desde ahí.
-
-```text
-workspace/
-├── AGENTS.md              ruteo: qué proyecto es qué y a dónde derivar
-├── DEVELOPMENT.md         composición: contratos, puertos, decisiones transversales
-├── frontend/              AGENTS.md · DEVELOPMENT.md · sus skills
-├── backend/               AGENTS.md · DEVELOPMENT.md · sus skills
-└── mockup/                AGENTS.md · DEVELOPMENT.md · sus skills
-```
+Si la carpeta contiene varios proyectos independientes (cada uno con su `.git`), el instalador ofrece modo **workspace** para enrutar entre ellos. Cada proyecto sigue siendo autosuficiente con su propio `.baseline/`, `AGENTS.md` y `DEVELOPMENT.md`. La raíz queda con `AGENTS.md` de ruteo y `DEVELOPMENT.md` de composición.
 
 Plantillas: `templates/AGENTS-workspace.md` y `templates/DEVELOPMENT-workspace.md`.
-
-El agente no sabe por sí solo en qué proyecto está: lo sabe porque el `AGENTS.md` de la raíz se lo dice e indica leer el del subproyecto antes de tocar código.
 
 ## Verificación
 
@@ -131,14 +83,16 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\tools\verify.ps1
 ```
 
-Sale `0` si todo está bien, `1` si algo falla. Es el mismo comando que se usa en CI y al cerrar un cambio.
+Sale `0` si todo está bien, `1` si algo falla.
 
 | Comando | Qué valida |
 |---|---|
 | `check.ps1` | frontmatter, referencias, solapamiento, evals, frescura, encoding, inventario |
 | `budget.ps1` | tokens por skill y por descripción |
 | `memory.ps1` | rutas del mapa de `DEVELOPMENT.md` que existan |
-| `verify.ps1` | los cuatro, agregados |
+| `sync.ps1` | copias espejo si existen |
+| `test.ps1` | tests mínimos de integración del instalador |
+| `verify.ps1` | todos, agregados |
 
 ## Cómo agregar una skill
 
@@ -156,4 +110,4 @@ MIT — ver [LICENSE](LICENSE).
 
 ## Estado
 
-16 skills, 47 casos de eval, verificación en verde (2026-10-23). Los pendientes y las decisiones están en `DEVELOPMENT.md`.
+16 skills, 47 casos de eval, verificación en verde. Los pendientes y las decisiones están en `DEVELOPMENT.md`.
