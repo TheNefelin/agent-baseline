@@ -21,9 +21,12 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Parent = Split-Path -Parent $Root
 
+$MirrorSkill = Join-Path (Join-Path $Parent 'skills') 'catalog-maintenance'
+$MirrorSkill = Join-Path $MirrorSkill 'SKILL.md'
+$SourceSkill = Join-Path (Join-Path (Join-Path $Root 'skills') 'catalog-maintenance') 'SKILL.md'
 $pairs = @(
     @{ Mirror = (Join-Path $Parent 'AGENTS.md'); Source = (Join-Path $Root 'AGENTS.md') },
-    @{ Mirror = (Join-Path $Parent 'skills\catalog-maintenance\SKILL.md'); Source = (Join-Path $Root 'skills\catalog-maintenance\SKILL.md') }
+    @{ Mirror = $MirrorSkill; Source = $SourceSkill }
 )
 
 $fail = 0

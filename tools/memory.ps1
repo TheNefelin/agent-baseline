@@ -36,9 +36,13 @@ $KnownRoots = @('skills', 'tools', 'evals', 'templates', 'archive', 'docs')
 
 function Test-KnownPath {
     param([string]$Rel)
-    $first = ($Rel -split '[\\/]')[0]
+    if ([string]::IsNullOrWhiteSpace($Rel)) { return $null }
+    $parts = $Rel -split '[\\/]+'
+    if ($parts.Count -eq 0) { return $null }
+    $first = $parts[0]
     if ($KnownRoots -notcontains $first) { return $null }
-    $full = Join-Path $Root ($Rel -replace '/', '\')
+    $normalized = ($Rel -replace '[\\/]+', [System.IO.Path]::DirectorySeparatorChar)
+    $full = Join-Path $Root $normalized
     return (Test-Path -LiteralPath $full)
 }
 
