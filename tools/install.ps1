@@ -426,6 +426,8 @@ function Remove-Project {
         return
     }
 
+    $backupDir = Join-Path (Join-Path $Path $BackupRoot) (Get-Date -Format 'yyyyMMdd-HHmmss')
+    Backup-File -Path $payload -BackupDir $backupDir
     Remove-Item -LiteralPath $payload -Recurse -Force
     if (Test-Path -LiteralPath $manifestPath) { Remove-Item -LiteralPath $manifestPath -Force }
 
@@ -442,8 +444,7 @@ function Remove-Project {
                 Write-Host "  bloque del puntero quitado; AGENTS.md conservado con tu contenido"
             }
         } elseif ($text -match 'agent-baseline') {
-            Remove-Item -LiteralPath $rootAgents -Force
-            Write-Host "  puntero AGENTS.md eliminado"
+            Write-Host "  AGENTS.md menciona agent-baseline pero no tiene los marcadores; se conserva" -ForegroundColor Yellow
         } else {
             Write-Host "  AGENTS.md conservado (no lo genero el instalador)" -ForegroundColor Yellow
         }
