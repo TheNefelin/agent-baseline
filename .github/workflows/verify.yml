@@ -1,0 +1,37 @@
+name: check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalogo:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar catalogo
+        shell: pwsh
+        run: ./tools/verify.ps1
+      - name: Ciclo del instalador
+        shell: pwsh
+        run: |
+          $t = Join-Path $env:RUNNER_TEMP 'proyecto'
+          New-Item -ItemType Directory -Path $t -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $t '.git') -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $t 'angular.json') -Value '{}'
+          ./tools/install.ps1 -Project $t -Skills angular -Target none
+          ./tools/install.ps1 -Project $t -Doctor
+          ./tools/install.ps1 -Project $t -Update
+          ./tools/install.ps1 -Project $t -Uninstall
+          if (Test-Path (Join-Path $t '.baseline')) { throw 'quedo .baseline' }
