@@ -79,14 +79,26 @@ function Detect-Skills {
     param([string]$Path)
     $found = New-Object System.Collections.Generic.List[string]
     if (Test-Path -LiteralPath (Join-Path $Path 'angular.json')) { $found.Add('angular') }
-    if ((Test-Path -LiteralPath (Join-Path $Path 'pyproject.toml')) -or (Test-Path -LiteralPath (Join-Path $Path 'requirements.txt'))) {
-        $found.Add('fastapi'); $found.Add('sql')
+    $hasPy = $false
+    $pyContent = ''
+    if (Test-Path -LiteralPath (Join-Path $Path 'pyproject.toml')) {
+        $hasPy = $true
+        try { $pyContent += ([System.IO.File]::ReadAllText((Join-Path $Path 'pyproject.toml'))) + "`n" } catch {}
+    }
+    if (Test-Path -LiteralPath (Join-Path $Path 'requirements.txt')) {
+        $hasPy = $true
+        try { $pyContent += ([System.IO.File]::ReadAllText((Join-Path $Path 'requirements.txt'))) + "`n" } catch {}
+    }
+    if ($hasPy) {
+        $lc = $pyContent.ToLower()
+        if ($lc -match 'fastapi') { $found.Add('fastapi') }
+        if ($lc -match 'sqlalchemy|psycopg|pymysql|aiomysql|asyncpg|django.db|sqlmodel') { $found.Add('sql') }
     }
     if (Test-Path -LiteralPath (Join-Path $Path 'Dockerfile')) { $found.Add('docker') }
     if (Test-Path -LiteralPath (Join-Path $Path 'docker-compose.yml')) { $found.Add('docker') }
     if (Test-Path -LiteralPath (Join-Path $Path '.github/workflows')) { $found.Add('github-actions') }
     if (Test-Path -LiteralPath (Join-Path $Path 'Chart.yaml')) { $found.Add('kubernetes') }
-    Get-ChildItem -LiteralPath $Path -Filter *.csproj -ErrorAction SilentlyContinue | ForEach-Object { if ($found -notcontains 'dotnet') { $found.Add('dotnet') } }
+    Get-ChildItem -LiteralPath $Path -Filter *.csproj -Recurse -Depth 3 -ErrorAction SilentlyContinue | ForEach-Object { if ($found -notcontains 'dotnet') { $found.Add('dotnet') } }
     return @($found | Select-Object -Unique)
 }
 
@@ -151,9 +163,9 @@ function Merge-OpenCode {
     $cfgPath = Join-Path $ProjectPath 'opencode.json'
     $templatePath = Join-Path $Root 'templates/targets/opencode.json'
     if (Test-Path -LiteralPath $cfgPath) {
-        $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
+        try { $cfg = [System.IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json } catch { $cfg = [System.IO.File]::ReadAllText($templatePath) | ConvertFrom-Json }
     } else {
-        $cfg = Get-Content -LiteralPath $templatePath -Raw | ConvertFrom-Json
+        try { $cfg = [System.IO.File]::ReadAllText($templatePath) | ConvertFrom-Json } catch { $cfg = [PSCustomObject]@{} }
         Write-Utf8 $cfgPath ($cfg | ConvertTo-Json -Depth 10)
         return 'creado'
     }
@@ -171,9 +183,11 @@ function Merge-OpenCode {
         }
     }
     if (-not $cfg.PSObject.Properties['permissions']) {
-        $tpl = Get-Content -LiteralPath $templatePath -Raw | ConvertFrom-Json
-        $cfg | Add-Member -NotePropertyName 'permissions' -NotePropertyValue $tpl.permissions
-        $changed = $true
+        try {
+            $tpl = [System.IO.File]::ReadAllText($templatePath) | ConvertFrom-Json
+            $cfg | Add-Member -NotePropertyName 'permissions' -NotePropertyValue $tpl.permissions
+            $changed = $true
+        } catch {}
     }
     if ($changed) { Write-Utf8 $cfgPath ($cfg | ConvertTo-Json -Depth 10); return 'fusionado' }
     return 'sin cambios'
@@ -195,7 +209,7 @@ function Install-Project {
     }
 
     $prev = $null
-    if (Test-Path -LiteralPath $manifestPath) { $prev = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json }
+    if (Test-Path -LiteralPath $manifestPath) { try { $prev = [System.IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json } catch { $prev = $null } }
 
     Write-Host ""
     Write-Host ("Proyecto : {0}" -f $Path)
@@ -258,9 +272,16 @@ function Install-Project {
     $existingPointer = ''
     if (Test-Path -LiteralPath $rootAgents) {
         Backup-File -Path $rootAgents -BackupDir $backupDir
-        $existingPointer = [System.IO.File]::ReadAllText($rootAgents)
+        try { $existingPointer = [System.IO.File]::ReadAllText($rootAgents) } catch { $existingPointer = '' }
     }
     Write-Utf8 $rootAgents (Merge-Pointer $existingPointer)
+    $sessionFile = Join-Path (Join-Path $Path $PayloadDir) 'session.md'
+    if (-not (Test-Path -LiteralPath $sessionFile)) {
+        $tplSession = Join-Path $Root 'templates/session.md'
+        if (Test-Path -LiteralPath $tplSession) {
+            try { Copy-Item -LiteralPath $tplSession -Destination $sessionFile -Force } catch {}
+        }
+    }
 
     $targetState = 'none'
     $targetLabel = 'cliente'
@@ -286,20 +307,24 @@ function Install-Project {
                     Write-Host "  quitar opencode.json (target anterior)"
                     $targetCreated = $false
                 } else {
-                    $cfg = Get-Content -LiteralPath $oldCfg -Raw | ConvertFrom-Json
-                    foreach ($key in @('instructions', 'skills')) {
-                        if ($cfg.PSObject.Properties[$key]) {
-                            $cfg.$key = @(@($cfg.$key) | Where-Object { $_ -ne ".baseline/AGENTS.md" -and $_ -ne '.baseline/skills' })
+                    try { $cfg = [System.IO.File]::ReadAllText($oldCfg) | ConvertFrom-Json } catch { $cfg = $null }
+                    if ($cfg -ne $null) {
+                        foreach ($key in @('instructions', 'skills')) {
+                            if ($cfg.PSObject.Properties[$key]) {
+                                $cfg.$key = @(@($cfg.$key) | Where-Object { $_ -ne ".baseline/AGENTS.md" -and $_ -ne '.baseline/skills' })
+                            }
                         }
-                    }
-                    if ($prev.PSObject.Properties['targetPermissionsAdded'] -and $prev.targetPermissionsAdded -and $cfg.PSObject.Properties['permissions']) {
-                        $tpl = Get-Content -LiteralPath (Join-Path $Root 'templates/targets/opencode.json') -Raw | ConvertFrom-Json
-                        if (($cfg.permissions | ConvertTo-Json -Depth 10 -Compress) -eq ($tpl.permissions | ConvertTo-Json -Depth 10 -Compress)) {
-                            $cfg.PSObject.Properties.Remove('permissions')
+                        if ($prev.PSObject.Properties['targetPermissionsAdded'] -and $prev.targetPermissionsAdded -and $cfg.PSObject.Properties['permissions']) {
+                            try {
+                                $tpl = [System.IO.File]::ReadAllText((Join-Path $Root 'templates/targets/opencode.json')) | ConvertFrom-Json
+                                if (($cfg.permissions | ConvertTo-Json -Depth 10 -Compress) -eq ($tpl.permissions | ConvertTo-Json -Depth 10 -Compress)) {
+                                    $cfg.PSObject.Properties.Remove('permissions')
+                                }
+                            } catch {}
                         }
+                        Write-Utf8 $oldCfg ($cfg | ConvertTo-Json -Depth 10)
+                        Write-Host "  entradas de opencode.json quitadas (target anterior)"
                     }
-                    Write-Utf8 $oldCfg ($cfg | ConvertTo-Json -Depth 10)
-                    Write-Host "  entradas de opencode.json quitadas (target anterior)"
                 }
             } else {
                 $targetCreated = $false
@@ -330,8 +355,7 @@ function Install-Project {
         $cfgPath = Join-Path $Path 'opencode.json'
         $hadPermissions = $false
         if (Test-Path -LiteralPath $cfgPath) {
-            $existingCfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
-            $hadPermissions = [bool]$existingCfg.PSObject.Properties['permissions']
+            try { $existingCfg = [System.IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json; $hadPermissions = [bool]$existingCfg.PSObject.Properties['permissions'] } catch { $hadPermissions = $false }
         } else {
             $targetCreated = $true
         }
@@ -407,7 +431,11 @@ function Install-Workspace {
     } else {
         Copy-Item -LiteralPath (Join-Path $Root 'templates/DEVELOPMENT-workspace.md') -Destination $dev -Force
     }
-    Write-Host "Workspace inicializado: AGENTS.md y DEVELOPMENT.md en la raiz." -ForegroundColor Green
+    if ((Test-Path -LiteralPath $agents) -or (Test-Path -LiteralPath $dev)) {
+        Write-Host "Workspace actualizado: AGENTS.md/DEVELOPMENT.md en la raiz (respaldados si existian)." -ForegroundColor Green
+    } else {
+        Write-Host "Workspace inicializado: AGENTS.md y DEVELOPMENT.md en la raiz." -ForegroundColor Green
+    }
 }
 
 function Remove-Project {
@@ -417,18 +445,20 @@ function Remove-Project {
     if (-not (Test-Path -LiteralPath $payload)) { Fail "No hay instalacion en $Path" }
 
     $m = $null
-    if (Test-Path -LiteralPath $manifestPath) { $m = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json }
+    if (Test-Path -LiteralPath $manifestPath) {
+        try { $m = [System.IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json } catch { $m = $null }
+    }
 
     Write-Host ""
     Write-Host ("Quitar de: {0}" -f $Path)
     if ($WhatIf) {
-        Write-Host "Plan (no se borra nada): quitar .baseline, el puntero y las entradas de opencode.json." -ForegroundColor Yellow
+        Write-Host "Plan (no se borra nada): respaldar .baseline/ y quitar solo lo gestionado, conservar memoria del proyecto." -ForegroundColor Yellow
         return
     }
 
     $backupDir = Join-Path (Join-Path $Path $BackupRoot) (Get-Date -Format 'yyyyMMdd-HHmmss')
-    Backup-File -Path $payload -BackupDir $backupDir
-    Remove-Item -LiteralPath $payload -Recurse -Force
+    if (Test-Path -LiteralPath $payload) { Backup-File -Path $payload -BackupDir $backupDir }
+    if (Test-Path -LiteralPath $payload) { Remove-Item -LiteralPath $payload -Recurse -Force }
     if (Test-Path -LiteralPath $manifestPath) { Remove-Item -LiteralPath $manifestPath -Force }
 
     $rootAgents = Join-Path $Path 'AGENTS.md'
@@ -443,10 +473,8 @@ function Remove-Project {
                 Write-Utf8 $rootAgents $rest
                 Write-Host "  bloque del puntero quitado; AGENTS.md conservado con tu contenido"
             }
-        } elseif ($text -match 'agent-baseline') {
-            Write-Host "  AGENTS.md menciona agent-baseline pero no tiene los marcadores; se conserva" -ForegroundColor Yellow
         } else {
-            Write-Host "  AGENTS.md conservado (no lo genero el instalador)" -ForegroundColor Yellow
+            Write-Host "  AGENTS.md sin marcadores; se conserva (no se borra)" -ForegroundColor Yellow
         }
     }
 
@@ -454,23 +482,57 @@ function Remove-Project {
     if (Test-Path -LiteralPath $cfgPath) {
         $created = ($m -ne $null -and $m.PSObject.Properties['targetFileCreated'] -and $m.targetFileCreated)
         if ($created) {
-            Remove-Item -LiteralPath $cfgPath -Force
-            Write-Host "  opencode.json eliminado (lo creo el instalador)"
+            try { $cfg = [System.IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json } catch { $cfg = $null }
+            $userModified = $false
+            if ($cfg -ne $null) {
+                if ($cfg.PSObject.Properties['model'] -or $cfg.PSObject.Properties['provider'] -or $cfg.PSObject.Properties['theme'] -or $cfg.PSObject.Properties['mcp']) { $userModified = $true }
+                if ($cfg.PSObject.Properties['permissions'] -and $m -ne $null -and $m.PSObject.Properties['targetPermissionsAdded'] -and $m.targetPermissionsAdded) {
+                    try {
+                        $tpl = [System.IO.File]::ReadAllText((Join-Path $Root 'templates/targets/opencode.json')) | ConvertFrom-Json
+                        if (($cfg.permissions | ConvertTo-Json -Depth 10 -Compress) -ne ($tpl.permissions | ConvertTo-Json -Depth 10 -Compress)) { $userModified = $true }
+                    } catch { $userModified = $true }
+                } elseif ($cfg.PSObject.Properties['permissions']) { $userModified = $true }
+            }
+            if ($userModified) {
+                Write-Host "  opencode.json fue modificado por el usuario; no se borra, se limpian solo entradas de agent-baseline" -ForegroundColor Yellow
+                $cfg = [System.IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json
+                foreach ($key in @('instructions', 'skills')) {
+                    if ($cfg.PSObject.Properties[$key]) {
+                        $cfg.$key = @(@($cfg.$key) | Where-Object { $_ -ne ".baseline/AGENTS.md" -and $_ -ne '.baseline/skills' })
+                    }
+                }
+                if ($m -ne $null -and $m.PSObject.Properties['targetPermissionsAdded'] -and $m.targetPermissionsAdded -and $cfg.PSObject.Properties['permissions']) {
+                    try {
+                        $tpl = [System.IO.File]::ReadAllText((Join-Path $Root 'templates/targets/opencode.json')) | ConvertFrom-Json
+                        if (($cfg.permissions | ConvertTo-Json -Depth 10 -Compress) -eq ($tpl.permissions | ConvertTo-Json -Depth 10 -Compress)) {
+                            $cfg.PSObject.Properties.Remove('permissions')
+                        }
+                    } catch {}
+                }
+                Write-Utf8 $cfgPath ($cfg | ConvertTo-Json -Depth 10)
+                Write-Host "  entradas quitadas de opencode.json"
+            } else {
+                Remove-Item -LiteralPath $cfgPath -Force
+                Write-Host "  opencode.json eliminado (lo creo el instalador)"
+            }
         } else {
-            $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
-            foreach ($key in @('instructions', 'skills')) {
-                if ($cfg.PSObject.Properties[$key]) {
-                    $cfg.$key = @(@($cfg.$key) | Where-Object { $_ -ne ".baseline/AGENTS.md" -and $_ -ne '.baseline/skills' })
+            try { $cfg = [System.IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json } catch { $cfg = $null }
+            if ($cfg -ne $null) {
+                foreach ($key in @('instructions', 'skills')) {
+                    if ($cfg.PSObject.Properties[$key]) {
+                        $cfg.$key = @(@($cfg.$key) | Where-Object { $_ -ne ".baseline/AGENTS.md" -and $_ -ne '.baseline/skills' })
+                    }
                 }
-            }
-            if ($m -ne $null -and $m.PSObject.Properties['targetPermissionsAdded'] -and $m.targetPermissionsAdded -and $cfg.PSObject.Properties['permissions']) {
-                $tpl = Get-Content -LiteralPath (Join-Path $Root 'templates/targets/opencode.json') -Raw | ConvertFrom-Json
-                if (($cfg.permissions | ConvertTo-Json -Depth 10 -Compress) -eq ($tpl.permissions | ConvertTo-Json -Depth 10 -Compress)) {
-                    $cfg.PSObject.Properties.Remove('permissions')
-                    Write-Host "  permissions del instalador quitados de opencode.json"
+                if ($m -ne $null -and $m.PSObject.Properties['targetPermissionsAdded'] -and $m.targetPermissionsAdded -and $cfg.PSObject.Properties['permissions']) {
+                    try {
+                        $tpl = [System.IO.File]::ReadAllText((Join-Path $Root 'templates/targets/opencode.json')) | ConvertFrom-Json
+                        if (($cfg.permissions | ConvertTo-Json -Depth 10 -Compress) -eq ($tpl.permissions | ConvertTo-Json -Depth 10 -Compress)) {
+                            $cfg.PSObject.Properties.Remove('permissions')
+                        }
+                    } catch {}
                 }
+                Write-Utf8 $cfgPath ($cfg | ConvertTo-Json -Depth 10)
             }
-            Write-Utf8 $cfgPath ($cfg | ConvertTo-Json -Depth 10)
             Write-Host "  entradas quitadas de opencode.json"
         }
     }
@@ -563,7 +625,8 @@ if ($Update) {
     if (-not (Test-Path -LiteralPath $prevManifest)) {
         Fail "No hay manifiesto en $targetPath. No hay nada que actualizar: instala primero."
     }
-    $mPrev = Get-Content -LiteralPath $prevManifest -Raw | ConvertFrom-Json
+    try { $mPrev = [System.IO.File]::ReadAllText($prevManifest) | ConvertFrom-Json } catch { $mPrev = $null }
+    if ($mPrev -eq $null) { Fail "Manifiesto corrupto o ilegible" }
     if (-not $Skills -or $Skills.Count -eq 0) { $Skills = @(@($mPrev.skills) | Where-Object { $_ }) }
     if (-not $PSBoundParameters.ContainsKey('Target') -and $mPrev.PSObject.Properties['targets']) {
         $Target = @(@($mPrev.targets) | Where-Object { $_ })[0]

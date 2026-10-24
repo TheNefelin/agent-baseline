@@ -17,6 +17,13 @@ Aplica a todo texto producido o modificado: código, comentarios, documentación
 
 No copies un mal estilo preexistente solo porque ya estaba: esta regla prevalece sobre el contenido anterior.
 
+## 1.1. Memoria: leer primero
+
+Antes de actuar:
+1. Lee el **mapa** en `DEVELOPMENT.md` (`## Mapa del proyecto`).
+2. Si existe `.baseline/session.md`, **léelo primero** para retomar la tarea activa, último avance, archivos tocados y siguiente paso.
+3. Solo entonces escanea código o archivos relevantes. No re-scrapees el repo entero para adivinar el estado.
+
 ## 2. Evidencia
 
 - No afirmes APIs, versiones, precios, comportamientos ni resultados sin comprobarlos. Lo no verificado se declara como no verificado.
