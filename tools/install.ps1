@@ -639,6 +639,10 @@ if ($Workspace -and $Mode -ne 'project') {
 
 $targetPath = if ($Project) { $Project } elseif ($Workspace -and $Mode -eq 'project') { $Workspace } else { (Get-Location).Path }
 
+if (-not (Test-Path -LiteralPath $targetPath -PathType Container)) {
+    Fail "La ruta especificada no es un directorio: $targetPath"
+}
+
 if ($Update) {
     $prevManifest = Join-Path $targetPath $ManifestName
     if (-not (Test-Path -LiteralPath $prevManifest)) {
@@ -667,33 +671,30 @@ if ($Mode -eq 'auto' -and -not $Project -and -not $Workspace -and -not $WhatIf) 
         if ($choice -eq 3) { Write-Host "Cancelado."; exit 0 }
         if ($choice -eq 1) { Install-Workspace -Path $targetPath; exit 0 }
     }
-} elseif ($Mode -eq 'auto' -and -not $Project -and -not $Workspace -and -not $WhatIf -and $interactive) {
-    $children = @(Get-ChildItem -LiteralPath $targetPath -Directory -ErrorAction SilentlyContinue |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName '.git') })
-    if ($children.Count -ge 2) {
-        Write-Host ""
-        Write-Host "Detecte varias subcarpetas con .git:" -ForegroundColor Yellow
-        $children | ForEach-Object { Write-Host ("  - {0}" -f $_.Name) }
-        $choice = Ask-Choice -Question "Que es esta carpeta?" -Options @('Workspace con varios proyectos', 'Un solo proyecto (aunque tenga subcarpetas)', 'Cancelar')
-        if ($choice -eq 3) { Write-Host "Cancelado."; exit 0 }
-        if ($choice -eq 1) { Install-Workspace -Path $targetPath; exit 0 }
-    }
 }
 
 if (-not $Skills -or $Skills.Count -eq 0) {
     $detected = Detect-Skills -Path $targetPath
     if ($detected.Count -eq 0) {
+        if (-not $interactive) {
+            Fail "No se detectaron skills y no se pasaron con -Skills. Usa -Skills <lista> en modo no interactivo. Ejemplo: .\tools\install.ps1 -Mode project -Project . -Skills angular,dotnet"
+        }
         Write-Host "No detecte el stack. Skills disponibles:" -ForegroundColor Yellow
         Write-Host ("  " + ((Get-SkillNames) -join ', '))
         $answer = Read-Host "Escribe las skills separadas por coma (vacio = ninguna)"
         $Skills = @($answer -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     } else {
-        Write-Host ("Skills detectadas: {0}" -f ($detected -join ', '))
-        $ok = Read-Host "Instalar esas? (s/n)"
-        if ($ok -match '^[sS]') { $Skills = $detected }
-        else {
-            $answer = Read-Host "Escribe las skills separadas por coma"
-            $Skills = @($answer -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        if (-not $interactive) {
+            Write-Host ("Skills detectadas (no interactivo): {0} - instalando automaticamente" -f ($detected -join ', ')) -ForegroundColor Cyan
+            $Skills = $detected
+        } else {
+            Write-Host ("Skills detectadas: {0}" -f ($detected -join ', '))
+            $ok = Read-Host "Instalar esas? (s/n)"
+            if ($ok -match '^[sS]') { $Skills = $detected }
+            else {
+                $answer = Read-Host "Escribe las skills separadas por coma"
+                $Skills = @($answer -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            }
         }
     }
 }
