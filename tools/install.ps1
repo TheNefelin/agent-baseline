@@ -168,7 +168,14 @@ function Merge-OpenCode {
     $cfgPath = Join-Path $ProjectPath 'opencode.json'
     $templatePath = Join-Path $Root 'templates/targets/opencode.json'
     if (Test-Path -LiteralPath $cfgPath) {
-        try { $cfg = [System.IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json } catch { $cfg = [System.IO.File]::ReadAllText($templatePath) | ConvertFrom-Json }
+        try {
+            $raw = [System.IO.File]::ReadAllText($cfgPath)
+            $cfg = $raw | ConvertFrom-Json
+        } catch {
+            Write-Host "AVISO  opencode.json existe pero no es JSON valido; se omite la fusion con agent-baseline." -ForegroundColor Yellow
+            Write-Host "       Se ha creado un respaldo en .baseline-backup/. Corrige el archivo manualmente o eliminelo para que se cree desde la plantilla." -ForegroundColor Yellow
+            return 'omitido (json invalido)'
+        }
     } else {
         try { $cfg = [System.IO.File]::ReadAllText($templatePath) | ConvertFrom-Json } catch { $cfg = [PSCustomObject]@{} }
         Write-Utf8 $cfgPath ($cfg | ConvertTo-Json -Depth 10)
