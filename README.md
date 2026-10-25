@@ -58,9 +58,10 @@ Si el proyecto no existe o no tiene stack reconocible, el instalador pregunta an
 
 **Prompts para el agente** (pégalos en el chat):
 
-- **Instalar:** `Instala agent-baseline en este proyecto. Usa tools/install.ps1 -Project ., detecta o pregunta las skills, deja -Target none salvo que te lo pida explícitamente. Revisa con -WhatIf primero, verifica con -Doctor tras instalar. No hagas commit ni push.`
-- **Actualizar:** `Actualiza agent-baseline en este proyecto con -Update usando el manifiesto actual. Revisa con -Doctor tras actualizar. No hagas commit ni push.`
-- **Desinstalar:** `Desinstala agent-baseline de este proyecto con -Uninstall. Conserva AGENTS.md/development si no son del instalador, respeta opencode.json fusionado y no toques memoria del proyecto. No hagas commit ni push.`
+- **Instalar (único proyecto):** `Analiza la estructura. Si hay 1 repositorio .git o es un solo proyecto, instala agent-baseline con tools/install.ps1 -Mode project -Project . Usa -WhatIf primero, detecta o pregunta las skills, deja -Target none salvo que te lo pida explícitamente. Verifica con -Doctor tras instalar. No hagas commit ni push.`
+- **Instalar (workspace con varios proyectos):** `Cuenta las carpetas hijas directas con .git. Si hay >=2, instala en modo workspace con tools/install.ps1 -Mode workspace -Workspace .. Usa las plantillas templates/AGENTS-workspace.md y templates/DEVELOPMENT-workspace.md. Cada subproyecto debe seguir siendo autosuficiente. Usa -WhatIf primero. No hagas commit ni push.`
+- **Actualizar:** `Actualiza agent-baseline en este proyecto con tools/install.ps1 -Project . -Update usando el manifiesto actual. Revisa con -Doctor tras actualizar. No hagas commit ni push.`
+- **Desinstalar:** `Desinstala agent-baseline de este proyecto con tools/install.ps1 -Project . -Uninstall. Conserva AGENTS.md/DEVELOPMENT.md si no son del instalador, respeta opencode.json fusionado y no toques memoria del proyecto. No hagas commit ni push.`
 
 **Modo manual** (si prefieres no ejecutar nada): copia `AGENTS.md` y las skills que uses a `<proyecto>/.baseline/`, y crea un `AGENTS.md` en la raíz que apunte ahí. En un proyecto nuevo, copia además `templates/DEVELOPMENT.md` y completa el mapa.
 
@@ -72,7 +73,20 @@ La regla es una sola: **la fuente es única**. El contenido vive en `AGENTS.md`;
 
 ## Workspace con varios proyectos
 
-Si la carpeta contiene varios proyectos independientes (cada uno con su `.git`), el instalador ofrece modo **workspace** para enrutar entre ellos. Cada proyecto sigue siendo autosuficiente con su propio `.baseline/`, `AGENTS.md` y `DEVELOPMENT.md`. La raíz queda con `AGENTS.md` de ruteo y `DEVELOPMENT.md` de composición.
+Si la carpeta contiene varios proyectos independientes (cada uno con su `.git`), usa el modo **workspace** para enrutar entre ellos. Cada proyecto sigue siendo autosuficiente con su propio `.baseline/`, `AGENTS.md` y `DEVELOPMENT.md`. La raíz queda con `AGENTS.md` de ruteo y `DEVELOPMENT.md` de composición.
+
+**Importante:** No confíes en el menú interactivo en entornos de agentes/CI. Usa explícitamente:
+
+```powershell
+# PowerShell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\tools\install.ps1 -Mode workspace -Workspace .
+```
+
+```bash
+# Linux/macOS con pwsh
+pwsh -File ./tools/install.ps1 -Mode workspace -Workspace .
+```
 
 Plantillas: `templates/AGENTS-workspace.md` y `templates/DEVELOPMENT-workspace.md`.
 

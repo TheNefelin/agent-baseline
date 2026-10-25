@@ -8,6 +8,7 @@
 
     -Project   instala en un proyecto
     -Workspace instala ruteo en la raiz de un workspace multi-proyecto
+    -Mode      auto (por defecto), project o workspace. Fuerza el modo sin preguntar.
     -Update    refresca lo ya instalado segun el manifiesto
     -Doctor    verifica hashes contra el manifiesto
     -Uninstall quita solo lo que agrego, y conserva la memoria del proyecto
@@ -22,6 +23,8 @@
     .\tools\install.ps1 -Project D:\Repo\frontend -Skills angular
     .\tools\install.ps1 -Project . -WhatIf
     .\tools\install.ps1 -Workspace D:\Repo
+    .\tools\install.ps1 -Mode workspace -Workspace .
+    .\tools\install.ps1 -Mode project -Project .
     .\tools\install.ps1 -Project . -Doctor
     .\tools\install.ps1 -Project . -Uninstall -WhatIf
 #>
@@ -30,6 +33,8 @@ param(
     [string]$Workspace,
     [string[]]$Skills,
     [string]$Target = 'none',
+    [ValidateSet('auto','project','workspace')]
+    [string]$Mode = 'auto',
     [switch]$Update,
     [switch]$Uninstall,
     [switch]$Doctor,
@@ -613,12 +618,26 @@ if ($Uninstall) {
     exit 0
 }
 
-if ($Workspace) {
+$interactive = $true
+try {
+    if (-not [Environment]::UserInteractive) { $interactive = $false }
+} catch { $interactive = $false }
+try {
+    if ([Console]::IsInputRedirected) { $interactive = $false }
+} catch { }
+
+if ($Mode -eq 'workspace') {
+    $wsPath = if ($Workspace) { $Workspace } elseif ($Project) { $Project } else { (Get-Location).Path }
+    Install-Workspace -Path $wsPath
+    exit 0
+}
+
+if ($Workspace -and $Mode -ne 'project') {
     Install-Workspace -Path $Workspace
     exit 0
 }
 
-$targetPath = if ($Project) { $Project } else { (Get-Location).Path }
+$targetPath = if ($Project) { $Project } elseif ($Workspace -and $Mode -eq 'project') { $Workspace } else { (Get-Location).Path }
 
 if ($Update) {
     $prevManifest = Join-Path $targetPath $ManifestName
@@ -634,7 +653,21 @@ if ($Update) {
     Write-Host ("Manifiesto: v{0}, skills [{1}], target {2}" -f $mPrev.baselineVersion, (@($Skills) -join ','), $Target) -ForegroundColor Cyan
 }
 
-if (-not $Project -and -not $WhatIf) {
+if ($Mode -eq 'auto' -and -not $Project -and -not $Workspace -and -not $WhatIf) {
+    $children = @(Get-ChildItem -LiteralPath $targetPath -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName '.git') })
+    if ($children.Count -ge 2) {
+        if (-not $interactive) {
+            Fail ("Se detectaron $($children.Count) repositorios git en subcarpetas hijas. Modo ambiguo en entorno no interactivo. Usa -Mode workspace -Workspace . o -Mode project -Project . explicitamente.")
+        }
+        Write-Host ""
+        Write-Host "Detecte varias subcarpetas con .git:" -ForegroundColor Yellow
+        $children | ForEach-Object { Write-Host ("  - {0}" -f $_.Name) }
+        $choice = Ask-Choice -Question "Que es esta carpeta?" -Options @('Workspace con varios proyectos', 'Un solo proyecto (aunque tenga subcarpetas)', 'Cancelar')
+        if ($choice -eq 3) { Write-Host "Cancelado."; exit 0 }
+        if ($choice -eq 1) { Install-Workspace -Path $targetPath; exit 0 }
+    }
+} elseif ($Mode -eq 'auto' -and -not $Project -and -not $Workspace -and -not $WhatIf -and $interactive) {
     $children = @(Get-ChildItem -LiteralPath $targetPath -Directory -ErrorAction SilentlyContinue |
         Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName '.git') })
     if ($children.Count -ge 2) {
