@@ -103,6 +103,20 @@ function Detect-Skills {
     if (Test-Path -LiteralPath (Join-Path $Path 'docker-compose.yml')) { $found.Add('docker') }
     if (Test-Path -LiteralPath (Join-Path $Path '.github/workflows')) { $found.Add('github-actions') }
     if (Test-Path -LiteralPath (Join-Path $Path 'Chart.yaml')) { $found.Add('kubernetes') }
+    if (Test-Path -LiteralPath (Join-Path $Path 'go.mod')) { $found.Add('go') }
+    if (Test-Path -LiteralPath (Join-Path $Path 'Cargo.toml')) { $found.Add('rust') }
+    foreach ($f in @('pom.xml','build.gradle','build.gradle.kts')) {
+        if (Test-Path -LiteralPath (Join-Path $Path $f)) { $found.Add('java'); break }
+    }
+    Get-ChildItem -LiteralPath $Path -Filter 'settings.gradle*' -Depth 2 -ErrorAction SilentlyContinue | ForEach-Object { if ($found -notcontains 'java') { $found.Add('java') } }
+    foreach ($f in @('next.config.js','next.config.ts','next.config.mjs','nuxt.config.ts','nuxt.config.js','vite.config.ts','vite.config.js','svelte.config.js','svelte.config.ts','astro.config.mjs','astro.config.ts')) {
+        if (Test-Path -LiteralPath (Join-Path $Path $f)) { break }
+    }
+    if ((Test-Path -LiteralPath (Join-Path $Path 'next.config.js')) -or (Test-Path -LiteralPath (Join-Path $Path 'next.config.ts')) -or (Test-Path -LiteralPath (Join-Path $Path 'next.config.mjs'))) { }
+    if ((Test-Path -LiteralPath (Join-Path $Path 'nuxt.config.ts')) -or (Test-Path -LiteralPath (Join-Path $Path 'nuxt.config.js'))) { }
+    if ((Test-Path -LiteralPath (Join-Path $Path 'vite.config.ts')) -or (Test-Path -LiteralPath (Join-Path $Path 'vite.config.js'))) { }
+    if ((Test-Path -LiteralPath (Join-Path $Path 'svelte.config.js')) -or (Test-Path -LiteralPath (Join-Path $Path 'svelte.config.ts'))) { }
+    if ((Test-Path -LiteralPath (Join-Path $Path 'astro.config.mjs')) -or (Test-Path -LiteralPath (Join-Path $Path 'astro.config.ts'))) { $found.Add('astro') }
     Get-ChildItem -LiteralPath $Path -Filter *.csproj -Recurse -Depth 3 -ErrorAction SilentlyContinue | ForEach-Object { if ($found -notcontains 'dotnet') { $found.Add('dotnet') } }
     return @($found | Select-Object -Unique)
 }
@@ -650,6 +664,14 @@ if (-not (Test-Path -LiteralPath $targetPath -PathType Container)) {
     Fail "La ruta especificada no es un directorio: $targetPath"
 }
 
+if ($Mode -eq 'workspace' -and (Test-Path -LiteralPath (Join-Path $targetPath $ManifestName))) {
+    if (-not $interactive) {
+        Fail "Ya existe una instalacion local (.baseline.json) en este proyecto. Usa -Mode project -Project . o -Update para actualizarla."
+    }
+    Write-Host "AVISO  Ya existe una instalacion local (.baseline.json) en este proyecto." -ForegroundColor Yellow
+    Write-Host "       Forzar -Mode workspace puede confundir el flujo. Si realmente es un workspace, usa -Mode workspace -Workspace ." -ForegroundColor Yellow
+}
+
 if ($Update) {
     $prevManifest = Join-Path $targetPath $ManifestName
     if (-not (Test-Path -LiteralPath $prevManifest)) {
@@ -666,7 +688,11 @@ if ($Update) {
 
 if ($Mode -eq 'auto' -and -not $Project -and -not $Workspace -and -not $WhatIf) {
     $children = @(Get-ChildItem -LiteralPath $targetPath -Directory -ErrorAction SilentlyContinue |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName '.git') })
+        Where-Object {
+            $gitPath = Join-Path $_.FullName '.git'
+            if (-not (Test-Path -LiteralPath $gitPath)) { return $false }
+            try { $item = Get-Item -LiteralPath $gitPath -Force -ErrorAction SilentlyContinue; return ($null -ne $item) } catch { return $false }
+        })
     if ($children.Count -ge 2) {
         if (-not $interactive) {
             Fail ("Se detectaron $($children.Count) repositorios git en subcarpetas hijas. Modo ambiguo en entorno no interactivo. Usa -Mode workspace -Workspace . o -Mode project -Project . explicitamente.")
