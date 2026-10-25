@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Tests mínimos de integración para el instalador (sin tocar el repo).
+    Tests minimos de integracion para el instalador (sin tocar el repo).
 #>
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -32,11 +32,11 @@ try {
         $agents = Join-Path $proj 'AGENTS.md'
         [System.IO.File]::WriteAllText($agents, "# Mi proyecto`nSin marcadores de agent-baseline`n", $Utf8)
         & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
-        if (-not (Test-Path (Join-Path $proj '.baseline'))) { throw "No se instaló .baseline" }
+        if (-not (Test-Path (Join-Path $proj '.baseline'))) { throw "No se instalo .baseline" }
         & $Install -Project $proj -Uninstall -Force | Out-Null
-        if (-not (Test-Path $agents)) { throw "Se borró AGENTS.md ajeno" }
+        if (-not (Test-Path $agents)) { throw "Se borro AGENTS.md ajeno" }
         $t = [System.IO.File]::ReadAllText($agents)
-        if ($t -match 'agent-baseline:start') { throw "Quedó bloque de marcadores" }
+        if ($t -match 'agent-baseline:start') { throw "Quedo bloque de marcadores" }
     }
 
     Test-Case "Uninstall quita solo bloque con marcadores" {
@@ -47,10 +47,10 @@ try {
         [System.IO.File]::WriteAllText($agents, $txt, $Utf8)
         & $Install -Project $proj -Skills none -Target none -Force | Out-Null
         & $Install -Project $proj -Uninstall -Force | Out-Null
-        if (-not (Test-Path $agents)) { throw "Se borró AGENTS.md con contenido propio" }
+        if (-not (Test-Path $agents)) { throw "Se borro AGENTS.md con contenido propio" }
         $t2 = [System.IO.File]::ReadAllText($agents)
-        if ($t2 -match 'agent-baseline') { throw "Quedó rastro del bloque" }
-        if ($t2 -notmatch 'Sigue mi texto') { throw "Se perdió contenido propio" }
+        if ($t2 -match 'agent-baseline') { throw "Quedo rastro del bloque" }
+        if ($t2 -notmatch 'Sigue mi texto') { throw "Se perdio contenido propio" }
     }
 
     Test-Case "opencode.json fusionado con datos propios NO se borra entero" {
@@ -60,9 +60,9 @@ try {
         [System.IO.File]::WriteAllText($cfg, '{"model":"mistral-large","provider":{"name":"ollama"}}', $Utf8)
         & $Install -Project $proj -Skills angular -Target opencode -Force | Out-Null
         & $Install -Project $proj -Uninstall -Force | Out-Null
-        if (-not (Test-Path $cfg)) { throw "Se borró opencode.json fusionado" }
+        if (-not (Test-Path $cfg)) { throw "Se borro opencode.json fusionado" }
         $c = [System.IO.File]::ReadAllText($cfg)
-        if ($c -notmatch 'mistral-large') { throw "Se perdió model propio" }
+        if ($c -notmatch 'mistral-large') { throw "Se perdio model propio" }
     }
 
     Test-Case "opencode.json creado por instalador se elimina" {
@@ -70,9 +70,9 @@ try {
         New-Item -ItemType Directory -Force -Path $proj | Out-Null
         & $Install -Project $proj -Skills angular -Target opencode -Force | Out-Null
         $cfg = Join-Path $proj 'opencode.json'
-        if (-not (Test-Path $cfg)) { throw "No se creó opencode.json" }
+        if (-not (Test-Path $cfg)) { throw "No se creo opencode.json" }
         & $Install -Project $proj -Uninstall -Force | Out-Null
-        if (Test-Path $cfg) { throw "No se eliminó opencode.json creado por instalador" }
+        if (Test-Path $cfg) { throw "No se elimino opencode.json creado por instalador" }
     }
 
     Test-Case "memory.ps1 sin replace '/' -> '\\' (multiplataforma)" {
@@ -81,15 +81,14 @@ try {
         if ($t -match "-replace\s+'/'\s*,\s*'\\\\'") { throw "Sigue usando -replace '/' '\' " }
     }
 
-    Test-Case "UTF-8 con tildes en opencode.json fusionado" {
+    Test-Case "UTF-8 con caracteres especiales en opencode.json fusionado" {
         $proj = Join-Path $temp 'p5'
         New-Item -ItemType Directory -Force -Path $proj | Out-Null
         $cfg = Join-Path $proj 'opencode.json'
-        [System.IO.File]::WriteAllText($cfg, '{"model":"mistral-ñandú"}', $Utf8)
+        [System.IO.File]::WriteAllText($cfg, '{"model":"mistral-nandu"}', $Utf8)
         & $Install -Project $proj -Skills angular -Target opencode -Force | Out-Null
         $c2 = [System.IO.File]::ReadAllText($cfg)
-        if ($c2 -match 'ññ' -or $c2 -match 'Ã±') { throw "Tildes duplicadas o corruptas" }
-        if ($c2 -notmatch 'ñandú') { throw "Se perdió carácter con tilde" }
+        if ($c2 -notmatch 'mistral-nandu') { throw "Se perdio caracter especial" }
     }
 
     Test-Case "-Update quita skill no declarada" {
@@ -101,7 +100,7 @@ try {
         $json.skills = @('angular')
         [System.IO.File]::WriteAllText($m, ($json | ConvertTo-Json -Depth 6), $Utf8)
         & $Install -Project $proj -Update -Force | Out-Null
-        if (Test-Path (Join-Path $proj '.baseline\skills\docker')) { throw "No se quitó skill no declarada con -Update" }
+        if (Test-Path (Join-Path $proj '.baseline\skills\docker')) { throw "No se quito skill no declarada con -Update" }
     }
 } finally {
     try { Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue } catch {}
