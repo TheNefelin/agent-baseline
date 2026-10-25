@@ -39,11 +39,15 @@ param(
     [switch]$Uninstall,
     [switch]$Doctor,
     [switch]$WhatIf,
+    [switch]$DryRun,
+    [switch]$ListSkills,
     [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
+if ($DryRun) { $WhatIf = $true }
 
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Version = ([System.IO.File]::ReadAllText((Join-Path $Root 'VERSION'))).Trim()
@@ -59,6 +63,33 @@ function Get-Sha { param([string]$Path) (Get-FileHash -LiteralPath $Path -Algori
 function Get-SkillNames {
     Get-ChildItem -LiteralPath (Join-Path $Root 'skills') -Directory |
         Sort-Object Name | Select-Object -ExpandProperty Name
+}
+
+function Show-Skills {
+    $skills = @()
+    foreach ($dir in (Get-ChildItem -LiteralPath (Join-Path $Root 'skills') -Directory | Sort-Object Name)) {
+        $sf = Join-Path $dir.FullName 'SKILL.md'
+        $desc = ''
+        if (Test-Path -LiteralPath $sf) {
+            $text = [System.IO.File]::ReadAllText($sf, [System.Text.Encoding]::UTF8)
+            if ($text -match 'description:\s*(.+)$' -and $text -match '(?s)^---\n.*?^---') {
+                $m = [regex]::Match($text, '(?m)^description:\s*(.+)$')
+                if ($m.Success) { $desc = $m.Groups[1].Value.Trim().Trim('"').Trim("'") }
+            }
+        }
+        $skills += [pscustomobject]@{ Name = $dir.Name; Description = $desc }
+    }
+    Write-Host ""
+    Write-Host ("Skills disponibles en el catalogo ({0}):" -f $skills.Count) -ForegroundColor Cyan
+    foreach ($s in $skills) {
+        if ($s.Description) {
+            Write-Host ("  {0,-16} {1}" -f $s.Name, $s.Description)
+        } else {
+            Write-Host ("  {0,-16}" -f $s.Name)
+        }
+    }
+    Write-Host ""
+    Write-Host "Uso: .\tools\install.ps1 -Project . -Skills <skill1,skill2>" -ForegroundColor DarkGray
 }
 
 function Assert-Skills {
@@ -117,6 +148,9 @@ function Detect-Skills {
     if ((Test-Path -LiteralPath (Join-Path $Path 'vite.config.ts')) -or (Test-Path -LiteralPath (Join-Path $Path 'vite.config.js'))) { }
     if ((Test-Path -LiteralPath (Join-Path $Path 'svelte.config.js')) -or (Test-Path -LiteralPath (Join-Path $Path 'svelte.config.ts'))) { }
     if ((Test-Path -LiteralPath (Join-Path $Path 'astro.config.mjs')) -or (Test-Path -LiteralPath (Join-Path $Path 'astro.config.ts'))) { $found.Add('astro') }
+    if (Test-Path -LiteralPath (Join-Path $Path 'composer.json')) { $found.Add('php') }
+    if (Test-Path -LiteralPath (Join-Path $Path 'Gemfile')) { $found.Add('ruby') }
+    if (Test-Path -LiteralPath (Join-Path $Path 'mix.exs')) { $found.Add('elixir') }
     Get-ChildItem -LiteralPath $Path -Filter *.csproj -Recurse -Depth 3 -ErrorAction SilentlyContinue | ForEach-Object { if ($found -notcontains 'dotnet') { $found.Add('dotnet') } }
     return @($found | Select-Object -Unique)
 }
@@ -626,6 +660,11 @@ function Test-Doctor {
 
 # --- Flujo principal ---------------------------------------------------------
 Write-Host ("agent-baseline {0}" -f $Version) -ForegroundColor Cyan
+
+if ($ListSkills) {
+    Show-Skills
+    exit 0
+}
 
 if ($Doctor) {
     $path = if ($Project) { $Project } else { (Get-Location).Path }
