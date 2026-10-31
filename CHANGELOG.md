@@ -8,6 +8,26 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.2.0] - 2026-10-31
+
+### Agregado
+
+- Skill `memoria`: audita `DEVELOPMENT.md` con presupuesto blando de 4.500 caracteres y tope duro de 6.000, checklist de 6 criterios y salida antes/después. El `DEVELOPMENT.md` del catálogo queda fuera del presupuesto.
+- `@Service()` (22.2+) como decorador de servicios de aplicación, con `@Injectable` reservado a alcance o `useFactory` explícito.
+- `references/ssr.md`: `allowedHosts` y `NG_ALLOWED_HOSTS`, diferencia entre `Server` y `Prerender` con URLs relativas, y namespace opcional del proxy.
+- `references/feedback.md`: montaje único de `modal-error`, `modal-confirm` y `toast` en `app.html`.
+
+### Cambiado
+
+- `AGENTS.md` §11: presupuesto medible, tres disparadores de auditoría y el detalle delegado a la skill `memoria`.
+- Regla de submit: `(submit)` con `preventDefault()` es válido sin `FormsModule`; `(ngSubmit)` sin `FormsModule` es el antipatrón.
+- El mapa se define por el título que empieza por `Mapa`; `## Mapa del proyecto` es la forma canónica.
+
+### Corregido
+
+- El checkpoint de sesión apunta a `.baseline/session.md` en `AGENTS.md` y en `DEVELOPMENT.md`; `.harness/session.md` nunca existió.
+- `skills/angular/SKILL.md`: eliminada la sección 15, que duplicaba la cita de `references/ejemplo-referencia.md`.
+
 ## [0.1.1] - 2026-10-23
 
 ### Cambiado

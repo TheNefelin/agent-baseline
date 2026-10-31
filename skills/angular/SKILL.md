@@ -25,7 +25,7 @@ Guía para construir y revisar aplicaciones Angular **signal-based** con criteri
 
 **Piso: Angular 21. Probado: 22.x.** Todo lo que sigue asume ese piso; no se escribe código compatible con versiones anteriores.
 
-> **Frescura:** verificado 2026-10-22 · ámbito: Angular 22.1.4 instalado (`httpResource` como `@publicApi 22.0`, `withIncrementalHydration` exportado por `@angular/core`) · fuente: tipos de los paquetes instalados. Al cambiar de major, revalidar.
+> **Frescura:** verificado 2026-10-31 · ámbito: Angular 22.1.4–22.2.3 instalado (`@Service` con `autoProvided: true` en 22.2.3; `httpResource` como `@publicApi 22.0`; `withIncrementalHydration` exportado por `@angular/core`) · fuente: tipos de los paquetes instalados. Al cambiar de major, revalidar.
 
 | Capacidad | Disponibilidad |
 |---|---|
@@ -33,6 +33,7 @@ Guía para construir y revisar aplicaciones Angular **signal-based** con criteri
 | `linkedSignal`, `resource`, `rxResource`, `afterRenderEffect`, `provideZonelessChangeDetection` | 21+ |
 | `httpResource` | **22.0** (`@publicApi 22.0`, verificado en los tipos de 22.1.4) |
 | Hidratación incremental (`withIncrementalHydration`) | 21+ (verificado: exportado por `@angular/core` en 22.1.4) |
+| `@Service()` | **22.2** (`autoProvided` por defecto `true`, verificado en `@angular/core@22.2.3`) |
 
 **Prohibido por ser legacy**: `NgModule`, `*ngIf`/`*ngFor`/`*ngSwitch`, decoradores `@Input`/`@Output`/`@ViewChild`, `ChangeDetectorRef.detectChanges()` manual, `Renderer2` salvo integración con librerías de terceros, y `ngOnChanges` para derivar estado (usar `computed`/`linkedSignal`).
 
@@ -122,6 +123,7 @@ Cada fork tiene un default y una condición de cambio. Sin esta tabla, la guía 
 ### 5.1 Servicios
 
 - **Nunca `HttpClient` en una página o componente**: todo pasa por el servicio del feature y este por el servicio base.
+- **Decorador**: `@Service()` (22.2+) en servicios de aplicación, `autoProvided: true` por defecto. `@Injectable({ providedIn: ... })` solo con alcance o `useFactory` explícito; en 21.x, `@Injectable` siempre. No "corrijas" un `@Service()` a `@Injectable`: rompe la provisión automática.
 - Query params con `HttpParams`, que ya codifica; `encodeURIComponent` solo si construyes la URL a mano.
 - `search` vacío no se envía (`!== ''`); `limit` acotado (1–100) según el contrato de la API.
 - Uploads con un único método multipart (`postWithFile<T>()`) y borrado de adjuntos con `deleteResource<T>()`.
@@ -165,7 +167,7 @@ protected readonly submitForm = output<{ id: number; data: SaveModel }>();
 - `linkedSignal` con `computation` reacciona al **source**: al cerrar el modal (`null`) el formulario vuelve a defaults sin `effect()` ni `patchValue`.
 - `clearTrigger` es para **selects** (limpiar la selección visual), no para el form principal.
 - El form emite `{ id, data }`: `id = 0` en creación, `id` real en edición; la página decide create vs update.
-- **Regla única de submit**: página completa → `<form (ngSubmit)>` **con `FormsModule` importado**; modal → `<form>` sin evento y botón `type="button"` con `(clicked)`. Sin `FormsModule`, `ngSubmit` no dispara y el navegador hace submit nativo.
+- **Regla única de submit**: con controles `ngModel` → `<form (ngSubmit)>` **con `FormsModule` importado**; sin controles enlazados → `<form (submit)>` **con `event.preventDefault()`** en el handler, sin `FormsModule`; modal → `<form>` sin evento y botón `type="button"` con `(clicked)`. `(ngSubmit)` sin `FormsModule` no dispara y el navegador hace el submit nativo.
 - Validación local con `validateFormOnSubmit(): string | null`; el mensaje se muestra junto al campo, nunca como toast ni modal.
 - El template lee datos de solo lectura desde `model()`, no desde `formData()`.
 
@@ -253,7 +255,7 @@ protected readonly submitForm = output<{ id: number; data: SaveModel }>();
 
 ---
 
-## 13. Checklist universal (10 ítems auditables)
+## 13. Checklist universal (11 ítems auditables)
 
 | # | Ítem | Cómo se comprueba |
 |---|---|---|
@@ -263,10 +265,11 @@ protected readonly submitForm = output<{ id: number; data: SaveModel }>();
 | 4 | Sin `*ngIf`/`*ngFor`/`NgModule` | búsqueda de `*ngIf`, `NgModule` |
 | 5 | Outputs sin prefijo `on` y sin nombres nativos | `no-output-on-prefix`, `no-output-native` |
 | 6 | Lecturas con `httpResource`/`rxResource` y estados expuestos | revisión del componente |
-| 7 | Formularios con la regla única de submit y `FormsModule` cuando aplica | revisión + build |
+| 7 | Formularios: `ngSubmit` con `FormsModule` si hay `ngModel`; si no, `(submit)` con `preventDefault()` | revisión + build |
 | 8 | `OnPush` en componentes, con excepción documentada | búsqueda de `ChangeDetectionStrategy` |
 | 9 | A11y: labels asociados, foco en modales, `aria-live` en toasts | lint + revisión |
 | 10 | Sin secretos ni credenciales en el cliente | búsqueda de `apiKey`, `secret`, `token =` |
+| 11 | Feedback montado una vez: `modal-error`, `modal-confirm` y `toast` presentes en el layout | búsqueda de los selectores en `app.html` |
 
 Los criterios específicos de un proyecto (nombres, endpoints, badges en tiempo real) van en `references/ejemplo-referencia.md`, no aquí.
 
@@ -277,8 +280,8 @@ Los criterios específicos de un proyecto (nombres, endpoints, badges en tiempo 
 | Anti-patrón | Consecuencia |
 |---|---|
 | `subscribe()` manual para listados | estado stale, fugas, doble fetch |
-| `(submit)` en lugar de `(ngSubmit)` | Enter recarga la página y se pierde el formulario |
-| `(ngSubmit)` sin `FormsModule` | el evento nunca dispara y el form hace submit nativo |
+| `(ngSubmit)` sin `FormsModule` | el evento nunca dispara y el navegador recarga la página |
+| `(submit)` sin `preventDefault()` | recarga la página y se pierde el formulario |
 | Spinner con `isLoading()` a secas | la lista se desmonta en cada refetch |
 | `limit` sin tope | el backend responde 422 o degrada |
 | Efectos dentro del `map` del recurso | paginación stale cuando falla la request |
@@ -292,9 +295,3 @@ Los criterios específicos de un proyecto (nombres, endpoints, badges en tiempo 
 | Tokens en storage presentados como seguros | el XSS los roba; no es una frontera |
 | `templateUrl` desactualizado tras renombrar | compila pero el template no carga |
 | Comillas dobles e imports relativos | inconsistencia que rompe el lint |
-
----
-
-## 15. Ejemplo de referencia
-
-Los nombres concretos (`GenreModel`, `book-form-component`, `reservation`, `NotificationBadgeState`, `isEditMode()`) y los casos reales están en `references/ejemplo-referencia.md`. Ese archivo **no es normativo**: si el proyecto cambia de nomenclatura, se actualiza ahí y esta guía sigue siendo válida.

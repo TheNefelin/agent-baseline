@@ -44,6 +44,9 @@
   { "id": "catalog-maintenance-pos-01", "tipo": "positivo", "prompt": "agregar una skill nueva al catalogo y actualizar el inventario", "expect": "catalog-maintenance" },
   { "id": "catalog-maintenance-pos-02", "tipo": "positivo", "prompt": "el check falla por una referencia huerfana, como lo arreglo", "expect": "catalog-maintenance" },
 
+  { "id": "memoria-pos-01", "tipo": "positivo", "prompt": "auditar el development.md del proyecto y recortar lo que ya no sirve", "expect": "memoria" },
+  { "id": "memoria-neg-01", "tipo": "negativo", "prompt": "redactar el acta de la reunion del equipo", "expect": null, "nota": "no es memoria tecnica del proyecto ni ninguna skill del catalogo" },
+
   { "id": "none-neg-01", "tipo": "negativo", "prompt": "resumir este correo en tres lineas y sin tecnicismos", "expect": "none", "nota": "forma explicita 'none' (los demas negativos usan null): ninguna skill del catalogo" },
   { "id": "none-neg-02", "tipo": "negativo", "prompt": "traducir este texto tecnico al ingles", "expect": null, "nota": "traduccion, fuera de alcance" },
   { "id": "none-neg-02b", "tipo": "negativo", "prompt": "explicame que es un closure en javascript", "expect": null, "nota": "pregunta conceptual, sin stack del catalogo" },

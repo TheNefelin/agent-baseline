@@ -124,4 +124,4 @@ MIT — ver [LICENSE](LICENSE).
 
 ## Estado
 
-16 skills, 47 casos de eval, verificación en verde. Los pendientes y las decisiones están en `DEVELOPMENT.md`.
+17 skills, 49 casos de eval, verificación en verde. Los pendientes y las decisiones están en `DEVELOPMENT.md`.

@@ -4,6 +4,7 @@
 > Marca el **estado** de cada decisión (`Aceptado`, `Propuesto`, `Pendiente`); lo desconocido se anota, no se inventa.
 > Reemplaza el estado caducado en vez de acumular un diario de cada sesión.
 > Empieza por el **Mapa del proyecto**: apunta a dónde mirar sin re-escanear el código.
+> Presupuesto: blando 4.500 caracteres, duro 6.000; sobre el duro, audita con la skill `memoria` antes de agregar.
 
 ## Mapa del proyecto
 

@@ -4,7 +4,7 @@
 
 Reglas de operación (`AGENTS.md`) más un catálogo de skills reutilizables para agentes de código. Cada skill es un cuerpo corto que se carga siempre y un conjunto de referencias que se leen solo cuando hacen falta.
 
-**16 skills** y **47 casos** de eval de enrutamiento.
+**17 skills** y **49 casos** de eval de enrutamiento.
 
 ## Mapa del proyecto
 
@@ -22,14 +22,14 @@ Reglas de operación (`AGENTS.md`) más un catálogo de skills reutilizables par
 
 ```text
 README.md                        qué es, instalación y uso
-AGENTS.md                        reglas de operación (112 líneas)
+AGENTS.md                        reglas de operación (123 líneas)
 VERSION                          versión actual (semver)
 CHANGELOG.md                     historial y criterio de versión
 skills/
 └── <nombre>/
     ├── SKILL.md                 cuerpo, ≤300 líneas
     └── references/*.md          detalle bajo demanda
-evals/triggers.json              47 casos: positivo, ambiguo, frontera, negativo
+evals/triggers.json              49 casos: positivo, ambiguo, frontera, negativo
 tools/install.ps1                instalador: -Project, -Workspace, -Update, -Doctor, -Uninstall, -WhatIf
 tools/check.ps1                  verificador del catálogo (7 bloques)
 tools/budget.ps1                 presupuesto de tokens por skill y por description
@@ -65,6 +65,9 @@ templates/                       plantillas de proyecto y de workspace
 | 2026-10-23 | Aceptado | `-Update` deja `skills/` como espejo: reemplaza las declaradas y quita las demás | `.baseline/skills/` y el campo `skills` del manifiesto deben describir el mismo conjunto |
 | 2026-10-23 | Aceptado | Cambiar de target con `-Update` retira el target anterior, y `-Uninstall` conoce los punteros de Cline/Kilo | Evitar archivos huérfanos al migrar de cliente |
 | 2026-10-23 | Pendiente | Verificar `opencode.json` contra un OpenCode v2 real | El template usa el esquema v2; sin cliente instalado no se probó la carga ni los permisos |
+| 2026-10-31 | Aceptado | Presupuesto de memoria: blando 4.500 y duro 6.000 caracteres, con auditoría en la skill `memoria` | El historial se paga en cada turno; en un proyecto real 8.663 caracteres bajaron a 4.064 sin perder nada operativo |
+| 2026-10-31 | Aceptado | El título del mapa empieza por `Mapa`; `## Mapa del proyecto` es la forma canónica | `memory.ps1` ya toleraba variantes y el contrato escrito era más estricto que la herramienta |
+| 2026-10-31 | Aceptado | El checkpoint de sesión vive en `.baseline/session.md` | El instalador ya lo crea ahí; §11 apuntaba a `.harness/`, una ruta que nunca existió |
 
 ## Plantillas
 
@@ -73,7 +76,7 @@ templates/                       plantillas de proyecto y de workspace
 | `README.md` | descripción, instalación y uso de un proyecto | raíz del proyecto |
 | `DEVELOPMENT.md` | memoria del proyecto: mapa, decisiones, pendientes | raíz del proyecto |
 | `SKILL.md` | criterios técnicos propios de un proyecto | raíz del proyecto |
-| `session.md` | checkpoint de tarea larga | `.harness/session.md` |
+| `session.md` | checkpoint de tarea larga | `.baseline/session.md` |
 | `AGENTS-workspace.md` | reglas de ruteo de un workspace multi-proyecto | raíz del workspace |
 | `DEVELOPMENT-workspace.md` | composición: contratos y decisiones transversales | raíz del workspace |
 | `targets/opencode.json` | config del cliente openCode: reglas + skills + permisos | raíz del proyecto, como `opencode.json` |
@@ -114,7 +117,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\tools\memory.ps1 -RequireMap
 ```
 
-`check.ps1` valida: frontmatter y `name` = carpeta, YAML citado, cuerpo ≤300, referencias citadas y alcanzables, solapamiento Jaccard entre descripciones, los 47 casos de eval, frescura de los marcadores, encoding (UTF-8 sin BOM, LF) e inventario declarado.
+`check.ps1` valida: frontmatter y `name` = carpeta, YAML citado, cuerpo ≤300, referencias citadas y alcanzables, solapamiento Jaccard entre descripciones, los 49 casos de eval, frescura de los marcadores, encoding (UTF-8 sin BOM, LF) e inventario declarado.
 
 `budget.ps1` mide lo que se paga: caracteres de cada description (cada request) y tokens de cada cuerpo (al abrir la skill). Falla si una se pasa del límite.
 

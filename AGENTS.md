@@ -20,7 +20,7 @@ No copies un mal estilo preexistente solo porque ya estaba: esta regla prevalece
 ## 1.1. Memoria: leer primero
 
 Antes de actuar:
-1. Lee el **mapa** en `DEVELOPMENT.md` (`## Mapa del proyecto`).
+1. Lee el **mapa** de `DEVELOPMENT.md`: la sección cuyo título empieza por `Mapa` (`## Mapa del proyecto` es la forma canónica).
 2. Si existe `.baseline/session.md`, **léelo primero** para retomar la tarea activa, último avance, archivos tocados y siguiente paso.
 3. Solo entonces escanea código o archivos relevantes. No re-scrapees el repo entero para adivinar el estado.
 
@@ -102,7 +102,11 @@ Solo lo necesario para el pedido. Sin refactors, renombres, dependencias ni conf
 
 Al cerrar una tarea autorizada, registra en `DEVELOPMENT.md` solo las decisiones que sobrevivan a la sesión, con estado (`Aceptado`/`Propuesto`/`Pendiente`). Reemplaza lo caducado; no acumules un diario.
 
-Tarea larga: checkpoint en `.harness/session.md` (≤40 líneas, fuera de Git) con tarea activa, último avance, archivos tocados, pruebas reales y siguiente paso.
+**Presupuesto**: blando 4.500 caracteres, duro 6.000. Se mide con `(Get-Content DEVELOPMENT.md -Raw).Length`. Sobre el duro no se agrega nada sin recortar antes.
+
+**Auditoría** (detalle en la skill `memoria`, que se lee solo al auditar): al cerrar, si el archivo cambió y superó el blando; al iniciar sesión, si ya está sobre el duro (audita antes de agregar); y cuando lo pida el usuario. Cuesta una lectura y una escritura, y el reporte lleva la tabla antes/después.
+
+Tarea larga: checkpoint en `.baseline/session.md` (≤40 líneas, fuera de Git) con tarea activa, último avance, archivos tocados, pruebas reales y siguiente paso.
 
 ## 12. Commits
 
