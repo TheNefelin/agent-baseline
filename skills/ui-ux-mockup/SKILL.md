@@ -1,6 +1,6 @@
 ---
 name: ui-ux-mockup
-description: "Dirección de arte y mockups previsualizables antes de implementar: landings, portafolios, apps web, sistema visual, referencias. NO para implementar frontend (`angular`/`astro`) ni backend (`dotnet`/`fastapi`)."
+description: "Dirección de arte y mockups previsualizables antes de implementar: landings, portafolios, aplicaciones, sistema visual, referencias. NO para implementar frontend (`angular`/`astro`) ni backend (`dotnet`/`fastapi`)."
 ---
 
 # UI/UX Mockup — Primero el diseño, después la implementación

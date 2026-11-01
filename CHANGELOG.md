@@ -8,6 +8,13 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.2.1] - 2026-11-01
+
+### Corregido
+
+- Eval `arduino-amb-01`: la description de `ui-ux-mockup` ya no incluye `apps web`, que le daba el mismo puntaje que `arduino` por la palabra común `web`.
+- `tools/check.ps1`: los empates de puntaje se resuelven por nombre, así el resultado no depende de la estabilidad de `Sort-Object`.
+
 ## [0.2.0] - 2026-10-31
 
 ### Agregado

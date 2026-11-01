@@ -313,7 +313,8 @@ else {
             }
             [pscustomobject]@{ Name = $s.Name; Score = $score }
         }
-        $ranked = @($ranked | Sort-Object -Property Score -Descending)
+        # Desempate determinista: sin esto, un empate depende de la estabilidad del sort.
+        $ranked = @($ranked | Sort-Object -Property @{ Expression = 'Score'; Descending = $true }, @{ Expression = 'Name'; Descending = $false })
         $top = $ranked[0]
         $expect = if ($null -eq $case.expect) { '' } else { [string]$case.expect }
         if ($expect -eq 'none' -or $expect -eq '') {
