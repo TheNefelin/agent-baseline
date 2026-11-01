@@ -45,7 +45,7 @@ try {
         $agents = Join-Path $proj 'AGENTS.md'
         $txt = "# Mi README`n<!-- agent-baseline:start -->`n> puntero`n<!-- agent-baseline:end -->`nSigue mi texto`n"
         [System.IO.File]::WriteAllText($agents, $txt, $Utf8)
-        & $Install -Project $proj -Skills none -Target none -Force | Out-Null
+        & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
         & $Install -Project $proj -Uninstall -Force | Out-Null
         if (-not (Test-Path $agents)) { throw "Se borro AGENTS.md con contenido propio" }
         $t2 = [System.IO.File]::ReadAllText($agents)
@@ -101,6 +101,38 @@ try {
         [System.IO.File]::WriteAllText($m, ($json | ConvertTo-Json -Depth 6), $Utf8)
         & $Install -Project $proj -Update -Force | Out-Null
         if (Test-Path (Join-Path $proj '.baseline\skills\docker')) { throw "No se quito skill no declarada con -Update" }
+    }
+
+    Test-Case "El puntero AGENTS.md lista las skills instaladas" {
+        $proj = Join-Path $temp 'p7'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular,sql -Target none -Force | Out-Null
+        $t3 = [System.IO.File]::ReadAllText((Join-Path $proj 'AGENTS.md'))
+        if ($t3 -notmatch 'Skills instaladas') { throw "El puntero no declara skills" }
+        if ($t3 -notmatch 'angular' -or $t3 -notmatch 'sql') { throw "El puntero no lista las skills declaradas" }
+        if ($t3 -notmatch '\.baseline/skills') { throw "El puntero no indica donde viven" }
+    }
+
+    Test-Case "-Update refresca la lista de skills del puntero" {
+        $proj = Join-Path $temp 'p8'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular,docker -Target none -Force | Out-Null
+        $m2 = Join-Path $proj '.baseline.json'
+        $json2 = [System.IO.File]::ReadAllText($m2) | ConvertFrom-Json
+        $json2.skills = @('angular')
+        [System.IO.File]::WriteAllText($m2, ($json2 | ConvertTo-Json -Depth 6), $Utf8)
+        & $Install -Project $proj -Update -Force | Out-Null
+        $t4 = [System.IO.File]::ReadAllText((Join-Path $proj 'AGENTS.md'))
+        if ($t4 -match 'docker') { throw "El puntero conservo una skill no declarada" }
+        if ($t4 -notmatch 'angular') { throw "El puntero perdio la skill declarada" }
+    }
+
+    Test-Case "-Skills acepta una lista separada por comas en un solo argumento" {
+        $proj = Join-Path $temp 'p9'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills 'angular,sql' -Target none -Force | Out-Null
+        if (-not (Test-Path (Join-Path $proj '.baseline\skills\angular'))) { throw "No instalo angular" }
+        if (-not (Test-Path (Join-Path $proj '.baseline\skills\sql'))) { throw "No instalo sql" }
     }
 } finally {
     try { Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue } catch {}

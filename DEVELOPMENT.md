@@ -22,7 +22,7 @@ Reglas de operación (`AGENTS.md`) más un catálogo de skills reutilizables par
 
 ```text
 README.md                        qué es, instalación y uso
-AGENTS.md                        reglas de operación (123 líneas)
+AGENTS.md                        reglas de operación (124 líneas)
 VERSION                          versión actual (semver)
 CHANGELOG.md                     historial y criterio de versión
 skills/
@@ -35,7 +35,8 @@ tools/check.ps1                  verificador del catálogo (7 bloques)
 tools/budget.ps1                 presupuesto de tokens por skill y por description
 tools/memory.ps1                 rutas del mapa de memoria que deben existir
 tools/sync.ps1                   copias espejo del workspace sincronizadas por hash
-tools/verify.ps1                 corre los cuatro y agrega el resultado
+tools/test.ps1                   tests de integracion del instalador
+tools/verify.ps1                 corre los cinco y agrega el resultado
 templates/                       plantillas de proyecto y de workspace
 ```
 
@@ -68,6 +69,7 @@ templates/                       plantillas de proyecto y de workspace
 | 2026-10-31 | Aceptado | Presupuesto de memoria: blando 4.500 y duro 6.000 caracteres, con auditoría en la skill `memoria` | El historial se paga en cada turno; en un proyecto real 8.663 caracteres bajaron a 4.064 sin perder nada operativo |
 | 2026-10-31 | Aceptado | El título del mapa empieza por `Mapa`; `## Mapa del proyecto` es la forma canónica | `memory.ps1` ya toleraba variantes y el contrato escrito era más estricto que la herramienta |
 | 2026-10-31 | Aceptado | El checkpoint de sesión vive en `.baseline/session.md` | El instalador ya lo crea ahí; §11 apuntaba a `.harness/`, una ruta que nunca existió |
+| 2026-11-01 | Aceptado | El puntero `AGENTS.md` declara las skills instaladas con su ruta | Con `-Target none` por defecto, ningún cliente sabía que existían y el agente trabajaba sin ellas |
 
 ## Plantillas
 

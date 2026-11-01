@@ -60,6 +60,7 @@ Si la acción es de solo lectura, reversible y de bajo impacto (leer, buscar, li
 Antes de tocar un área, lee su memoria: el mapa de `DEVELOPMENT.md` (área → dónde mirar → cuándo), luego `README.md` y el `SKILL.md` del proyecto.
 
 - No escanees el repositorio entero: abre solo el destino de la fila que corresponde.
+- **Skills instaladas**: viven en `.baseline/skills/<nombre>/SKILL.md` y `.baseline.json` lista cuáles. Antes de escribir código de un stack, abre la skill que corresponda; no escanees la carpeta entera.
 - **Desempate entre skills**: si dos skills compiten por el mismo pedido (p. ej. dos proveedores cloud sin nombrar, o "la base de datos" sin decir relacional o documental), pregunta cuál aplica antes de cargar ninguna. No elijas por suposición.
 - Si la memoria contradice el código, señálalo; no asumas que está al día ni la reemplaces con una lectura completa.
 - **Workspace multi-proyecto**: la raíz no es un proyecto. Si abres el agente en la raíz y la tarea pertenece a `frontend/`, lee primero `frontend/AGENTS.md` y `frontend/DEVELOPMENT.md`; el stack del subproyecto manda sobre el de la raíz. `install`, `build` y `test` se ejecutan dentro de cada proyecto, nunca en la raíz.

@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    Punto de entrada unico: corre check, budget y memory y agrega el resultado.
+    Punto de entrada unico: corre check, budget, memory, sync y los tests del instalador, y agrega el resultado.
 
 .DESCRIPTION
-    Sale 0 solo si los tres pasan. Pensado para CI y para el cierre de una tarea.
+    Sale 0 solo si todos pasan. Pensado para CI y para el cierre de una tarea.
 
 .EXAMPLE
     .\tools\verify.ps1
@@ -37,6 +37,11 @@ Write-Host ""
 Write-Host "=== sync.ps1 ===" -ForegroundColor Cyan
 & (Join-Path $PSScriptRoot 'sync.ps1')
 $results += [pscustomobject]@{ Name = 'sync'; Code = $LASTEXITCODE }
+
+Write-Host ""
+Write-Host "=== test.ps1 ===" -ForegroundColor Cyan
+& (Join-Path $PSScriptRoot 'test.ps1')
+$results += [pscustomobject]@{ Name = 'test'; Code = $LASTEXITCODE }
 
 Write-Host ""
 Write-Host "=== resumen ===" -ForegroundColor Cyan

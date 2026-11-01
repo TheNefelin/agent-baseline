@@ -15,6 +15,17 @@ Criterio de versión:
 - Eval `arduino-amb-01`: la description de `ui-ux-mockup` ya no incluye `apps web`, que le daba el mismo puntaje que `arduino` por la palabra común `web`.
 - `tools/check.ps1`: los empates de puntaje se resuelven por nombre, así el resultado no depende de la estabilidad de `Sort-Object`.
 
+## [0.2.2] - 2026-11-01
+
+### Corregido
+
+- El puntero `AGENTS.md` declara las skills instaladas con su ruta: antes solo apuntaba a `.baseline/AGENTS.md`, así que con `-Target none` (default desde 0.1.1) ningún cliente sabía que existían.
+- `-Update` reescribe esa lista, de modo que una skill retirada desaparece del puntero.
+- `-Skills` acepta la lista separada por comas en un solo argumento (`-Skills "angular,sql"`), que es como llega al invocar el instalador con `-File` desde otro shell.
+- `AGENTS.md` §6 indica dónde viven las skills instaladas y que se carga solo la que corresponde.
+- `tools/verify.ps1` incluye `tools/test.ps1`: un caso roto del instalador ya no puede pasar desapercibido con la verificación en verde.
+- `tools/test.ps1`: el caso del bloque de marcadores usaba `-Skills none`, que la validación rechaza desde 0.1.1; ahora usa una skill real.
+
 ## [0.2.0] - 2026-10-31
 
 ### Agregado

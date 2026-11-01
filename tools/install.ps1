@@ -49,6 +49,10 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 if ($DryRun) { $WhatIf = $true }
 
+if ($Skills) {
+    $Skills = @($Skills | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Version = ([System.IO.File]::ReadAllText((Join-Path $Root 'VERSION'))).Trim()
 $ManifestName = '.baseline.json'
@@ -199,10 +203,17 @@ function Remove-PointerFile {
 }
 
 function Merge-Pointer {
-    param([string]$Existing)
+    param([string]$Existing, [string[]]$SkillList)
     $startMarker = '<!-- agent-baseline:start -->'
     $endMarker = '<!-- agent-baseline:end -->'
-    $body = "# AGENTS.md`n`n> Las reglas de este proyecto viven en ``.baseline/AGENTS.md``. Leelas antes de tocar codigo.`n> Instalado con agent-baseline $Version. No edites este bloque: edita ``.baseline/AGENTS.md``."
+    $names = @(@($SkillList) | Where-Object { $_ } | Select-Object -Unique)
+    if ($names.Count -gt 0) {
+        $listed = ($names | ForEach-Object { '`' + $_ + '`' }) -join ', '
+        $skillsLine = "`n> Skills instaladas: $listed en ``.baseline/skills/<nombre>/SKILL.md``. Antes de escribir codigo de ese stack, abre la que corresponda y sigue sus reglas."
+    } else {
+        $skillsLine = "`n> Sin skills instaladas: solo aplican las reglas de ``.baseline/AGENTS.md``."
+    }
+    $body = "# AGENTS.md`n`n> Las reglas de este proyecto viven en ``.baseline/AGENTS.md``. Leelas antes de tocar codigo." + $skillsLine + "`n> Instalado con agent-baseline $Version. No edites este bloque: edita ``.baseline/AGENTS.md``."
     $block = $startMarker + "`n" + $body + "`n" + $endMarker
     if ($Existing -match '(?s)<!-- agent-baseline:start -->.*?<!-- agent-baseline:end -->') {
         return ($Existing -replace '(?s)<!-- agent-baseline:start -->.*?<!-- agent-baseline:end -->', $block)
@@ -334,7 +345,7 @@ function Install-Project {
         Backup-File -Path $rootAgents -BackupDir $backupDir
         try { $existingPointer = [System.IO.File]::ReadAllText($rootAgents) } catch { $existingPointer = '' }
     }
-    Write-Utf8 $rootAgents (Merge-Pointer $existingPointer)
+    Write-Utf8 $rootAgents (Merge-Pointer -Existing $existingPointer -SkillList $SkillList)
     $sessionFile = Join-Path (Join-Path $Path $PayloadDir) 'session.md'
     if (-not (Test-Path -LiteralPath $sessionFile)) {
         $tplSession = Join-Path $Root 'templates/session.md'
