@@ -161,7 +161,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 5. `ui-ux-mockup` sigue sin referencias (274 líneas en un solo archivo).
 6. Revisar profundidad de `aws`, `azure` y `oci` (102–104 líneas cada una).
 7. Evaluar `harness-freshness` como skill 16: audita que las afirmaciones de versión sigan vigentes.
-8. Verificar `opencode.json` con un OpenCode v2 real (carga de skills y permisos). El esquema v1 (`permission` como objeto) no es compatible con el template actual.
+8. Verificar en runtime `opencode.json` (carga de skills y permisos). El esquema ya está validado contra `https://opencode.ai/config.json` (2026-11-01): `permissions` es `array<{action, resource, effect}>` y `skills` es `array<string>`, igual que el template. Falta comprobar que un cliente real los aplique.
+9. **Soporte multi-target**: `-Target` como lista y conservar las puertas de los clientes no declarados. Hoy cambiar de target borra el puntero anterior (pasar a `opencode` elimina `.clinerules/agent-baseline.md`), y el manifiesto ya guarda `targets` como array.
 
 ## Cómo agregar una skill
 
