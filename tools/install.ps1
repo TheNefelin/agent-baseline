@@ -58,6 +58,8 @@ $Version = ([System.IO.File]::ReadAllText((Join-Path $Root 'VERSION'))).Trim()
 $ManifestName = '.baseline.json'
 $PayloadDir = '.baseline'
 $BackupRoot = '.baseline-backup'
+# Skills nucleares: las reglas (AGENTS.md §11) las citan, asi que deben viajar siempre.
+$CoreSkills = @('memoria')
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 
 function Fail { param([string]$Message) Write-Host $Message -ForegroundColor Red; exit 1 }
@@ -185,27 +187,100 @@ function Backup-File {
     }
 }
 
+function Add-GitIgnoreEntry {
+    param([string]$Path)
+    $gitignore = Join-Path $Path '.gitignore'
+    $entry = '.baseline-backup/'
+    $header = '# agent-baseline: respaldos de instalacion'
+    if (Test-Path -LiteralPath $gitignore) {
+        $text = [System.IO.File]::ReadAllText($gitignore)
+        $lines = @($text -split "`r?`n")
+        if (@($lines | Where-Object { $_.Trim() -eq $entry }).Count -gt 0) { return $false }
+        if ([string]::IsNullOrEmpty($text)) {
+            Write-Utf8 $gitignore ("$header`n$entry`n")
+        } else {
+            $add = if ($text.EndsWith("`n")) { '' } else { "`n" }
+            Write-Utf8 $gitignore ($text + $add + "`n" + $header + "`n" + $entry + "`n")
+        }
+    } else {
+        Write-Utf8 $gitignore ("$header`n$entry`n")
+    }
+    return $true
+}
+
+function Get-PointerSkills {
+    param([string]$Text)
+    $m = [regex]::Match($Text, 'Skills instaladas:\s*(.+?)\s+en\s+')
+    if (-not $m.Success) { return @() }
+    return @([regex]::Matches($m.Groups[1].Value, '`([^`]+)`') | ForEach-Object { $_.Groups[1].Value })
+}
+
+function Test-SameSkillSet {
+    param([string[]]$Declared, [string[]]$Expected)
+    $d = @(@($Declared) | Where-Object { $_ } | Sort-Object -Unique)
+    $e = @(@($Expected) | Where-Object { $_ } | Sort-Object -Unique)
+    return (($d -join "`n") -eq ($e -join "`n"))
+}
+
+function Remove-LegacyPointerLines {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return '' }
+    $keep = New-Object System.Collections.Generic.List[string]
+    foreach ($line in ($Text -split "`r?`n")) {
+        $trim = $line.Trim()
+        if ($trim -match '^>\s*Las reglas de este proyecto viven en ') { continue }
+        if ($trim -match '^>\s*Instalado con agent-baseline') { continue }
+        if ($trim -match '^>\s*Skills instaladas: .*\.baseline/skills') { continue }
+        if ($trim -match '^>\s*Sin skills instaladas: solo aplican las reglas de ') { continue }
+        $keep.Add($line)
+    }
+    return (($keep -join "`n").Trim())
+}
+
+function Test-GeneratedOnly {
+    param([string]$Text)
+    $t = $Text.Trim()
+    return ($t -eq '' -or $t -eq '# AGENTS.md' -or $t -eq '# Reglas del proyecto')
+}
+
+function Remove-PointerHeaderLine {
+    param([string]$Text)
+    $lines = @($Text -split "`r?`n")
+    if ($lines.Count -gt 0 -and $lines[0].Trim() -match '^#\s+(AGENTS\.md|Reglas del proyecto)$') {
+        return (@($lines | Select-Object -Skip 1) -join "`n").Trim()
+    }
+    return $Text
+}
+
 function Remove-PointerFile {
     param([string]$Path, [string]$Label)
     if (-not (Test-Path -LiteralPath $Path)) { return }
-    $text = [System.IO.File]::ReadAllText($Path)
-    if ($text -notmatch 'agent-baseline') { return }
-    Remove-Item -LiteralPath $Path -Force
-    Write-Host ("  puntero eliminado: {0}" -f $Label)
-    $parentDir = Split-Path $Path -Parent
-    if ((Test-Path -LiteralPath $parentDir) -and @(Get-ChildItem -LiteralPath $parentDir -Force).Count -eq 0) {
-        Remove-Item -LiteralPath $parentDir -Force
-        $grandDir = Split-Path $parentDir -Parent
-        if ((Split-Path $grandDir -Leaf) -eq '.kilocode' -and (Test-Path -LiteralPath $grandDir) -and @(Get-ChildItem -LiteralPath $grandDir -Force).Count -eq 0) {
-            Remove-Item -LiteralPath $grandDir -Force
+    $original = [System.IO.File]::ReadAllText($Path).Trim()
+    $rest = $original
+    if ($rest -match '(?s)<!-- agent-baseline:start -->.*?<!-- agent-baseline:end -->') {
+        $rest = ($rest -replace '(?s)<!-- agent-baseline:start -->.*?<!-- agent-baseline:end -->', '').Trim()
+    } else {
+        $rest = Remove-PointerHeaderLine -Text (Remove-LegacyPointerLines -Text $rest)
+    }
+    if (Test-GeneratedOnly -Text $rest) {
+        Remove-Item -LiteralPath $Path -Force
+        Write-Host ("  puntero eliminado: {0}" -f $Label)
+        $parentDir = Split-Path $Path -Parent
+        if ((Test-Path -LiteralPath $parentDir) -and @(Get-ChildItem -LiteralPath $parentDir -Force).Count -eq 0) {
+            Remove-Item -LiteralPath $parentDir -Force
+            $grandDir = Split-Path $parentDir -Parent
+            if ((Split-Path $grandDir -Leaf) -eq '.kilocode' -and (Test-Path -LiteralPath $grandDir) -and @(Get-ChildItem -LiteralPath $grandDir -Force).Count -eq 0) {
+                Remove-Item -LiteralPath $grandDir -Force
+            }
         }
+    } elseif ($rest -ne $original) {
+        Write-Utf8 $Path $rest
+        Write-Host ("  bloque del puntero quitado; {0} conservado con tu contenido" -f $Label)
     }
 }
 
-function Merge-Pointer {
-    param([string]$Existing, [string[]]$SkillList)
-    $startMarker = '<!-- agent-baseline:start -->'
-    $endMarker = '<!-- agent-baseline:end -->'
+function Get-PointerBody {
+    param([string]$Header, [string[]]$SkillList)
     $names = @(@($SkillList) | Where-Object { $_ } | Select-Object -Unique)
     if ($names.Count -gt 0) {
         $listed = ($names | ForEach-Object { '`' + $_ + '`' }) -join ', '
@@ -213,13 +288,25 @@ function Merge-Pointer {
     } else {
         $skillsLine = "`n> Sin skills instaladas: solo aplican las reglas de ``.baseline/AGENTS.md``."
     }
-    $body = "# AGENTS.md`n`n> Las reglas de este proyecto viven en ``.baseline/AGENTS.md``. Leelas antes de tocar codigo." + $skillsLine + "`n> Instalado con agent-baseline $Version. No edites este bloque: edita ``.baseline/AGENTS.md``."
-    $block = $startMarker + "`n" + $body + "`n" + $endMarker
+    return ("# $Header" + "`n`n> Las reglas de este proyecto viven en ``.baseline/AGENTS.md``. Leelas antes de tocar codigo." + $skillsLine + "`n> Instalado con agent-baseline $Version. No edites este bloque: edita ``.baseline/AGENTS.md``.")
+}
+
+function Merge-MarkedBlock {
+    param([string]$Existing, [string]$Body)
+    $startMarker = '<!-- agent-baseline:start -->'
+    $endMarker = '<!-- agent-baseline:end -->'
+    $block = $startMarker + "`n" + $Body + "`n" + $endMarker
     if ($Existing -match '(?s)<!-- agent-baseline:start -->.*?<!-- agent-baseline:end -->') {
         return ($Existing -replace '(?s)<!-- agent-baseline:start -->.*?<!-- agent-baseline:end -->', $block)
     }
-    if ([string]::IsNullOrWhiteSpace($Existing)) { return $block + "`n" }
-    return $block + "`n`n" + $Existing.TrimStart()
+    $cleaned = Remove-PointerHeaderLine -Text (Remove-LegacyPointerLines -Text $Existing)
+    if (Test-GeneratedOnly -Text $cleaned) { return $block + "`n" }
+    return $block + "`n`n" + $cleaned.TrimStart()
+}
+
+function Merge-Pointer {
+    param([string]$Existing, [string[]]$SkillList)
+    return (Merge-MarkedBlock -Existing $Existing -Body (Get-PointerBody -Header 'AGENTS.md' -SkillList $SkillList))
 }
 
 function Merge-OpenCode {
@@ -268,6 +355,7 @@ function Install-Project {
     param([string]$Path, [string[]]$SkillList)
 
     if (-not (Test-Path -LiteralPath $Path)) { Fail "No existe la ruta: $Path" }
+    $SkillList = @((@($CoreSkills) + @($SkillList)) | Where-Object { $_ } | Select-Object -Unique)
     Assert-Skills -SkillList $SkillList
     Assert-Target -Value $Target
     $payload = Join-Path $Path $PayloadDir
@@ -302,11 +390,12 @@ function Install-Project {
         }
         Write-Host ("  escribir {0}" -f $ManifestName)
         Write-Host "  crear o fusionar AGENTS.md en la raiz"
+        Write-Host "  agregar .baseline-backup/ a .gitignore"
         if ($Target -eq 'opencode') { Write-Host "  crear o fusionar opencode.json" }
         elseif ($Target -eq 'cline' -or $Target -eq 'kilo') {
             $rel = '.clinerules/agent-baseline.md'
             if ($Target -eq 'kilo') { $rel = '.kilocode/rules/agent-baseline.md' }
-            Write-Host ("  crear {0}" -f $rel)
+            Write-Host ("  crear o fusionar {0}" -f $rel)
         }
         return
     }
@@ -437,10 +526,15 @@ function Install-Project {
     elseif ($Target -eq 'cline' -or $Target -eq 'kilo') {
         $rel = '.clinerules/agent-baseline.md'
         if ($Target -eq 'kilo') { $rel = '.kilocode/rules/agent-baseline.md' }
-        $pointerPath = Join-Path $Path $rel
-        Backup-File -Path $pointerPath -BackupDir $backupDir
+        $pointerPath = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
+        $existingPointer = ''
+        if (Test-Path -LiteralPath $pointerPath) {
+            Backup-File -Path $pointerPath -BackupDir $backupDir
+            try { $existingPointer = [System.IO.File]::ReadAllText($pointerPath) } catch { $existingPointer = '' }
+        }
         New-Item -ItemType Directory -Force -Path (Split-Path $pointerPath -Parent) | Out-Null
-        Copy-Item -LiteralPath (Join-Path $Root ("templates/targets/$Target.md")) -Destination $pointerPath -Force
+        $body = Get-PointerBody -Header 'Reglas del proyecto' -SkillList $SkillList
+        Write-Utf8 $pointerPath (Merge-MarkedBlock -Existing $existingPointer -Body $body)
         $targetFiles += $rel
         $targetLabel = $rel
         $targetState = 'puntero'
