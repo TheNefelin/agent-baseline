@@ -58,7 +58,7 @@ $Version = ([System.IO.File]::ReadAllText((Join-Path $Root 'VERSION'))).Trim()
 $ManifestName = '.baseline.json'
 $PayloadDir = '.baseline'
 $BackupRoot = '.baseline-backup'
-# Skills nucleares: las reglas (AGENTS.md §11) las citan, asi que deben viajar siempre.
+# Skills nucleares: las reglas (AGENTS.md seccion 11) las citan, asi que deben viajar siempre.
 $CoreSkills = @('memoria')
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
 
