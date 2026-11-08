@@ -70,6 +70,9 @@ templates/                       plantillas de proyecto y de workspace
 | 2026-10-31 | Aceptado | El título del mapa empieza por `Mapa`; `## Mapa del proyecto` es la forma canónica | `memory.ps1` ya toleraba variantes y el contrato escrito era más estricto que la herramienta |
 | 2026-10-31 | Aceptado | El checkpoint de sesión vive en `.baseline/session.md` | El instalador ya lo crea ahí; §11 apuntaba a `.harness/`, una ruta que nunca existió |
 | 2026-11-01 | Aceptado | El puntero `AGENTS.md` declara las skills instaladas con su ruta | Con `-Target none` por defecto, ningún cliente sabía que existían y el agente trabajaba sin ellas |
+| 2026-11-08 | Aceptado | Los punteros de Cline y Kilo se generan en código desde el cuerpo del puntero | Una plantilla por cliente duplicaba el texto y derivaba; `targets/` queda solo para `opencode.json` |
+| 2026-11-08 | Aceptado | `.gitignore` recibe `.baseline-backup/` con cabecera e inserción idempotente | Los respaldos no deben ensuciar el repo y repetir `-Update` no debe duplicar la línea |
+| 2026-11-08 | Aceptado | `-Doctor` sale 1 si falta el puntero, el target o una skill instalada; la versión atrasada queda como aviso | Un verde estructural no debe ocultar una instalación incoherente |
 
 ## Plantillas
 
@@ -82,10 +85,8 @@ templates/                       plantillas de proyecto y de workspace
 | `AGENTS-workspace.md` | reglas de ruteo de un workspace multi-proyecto | raíz del workspace |
 | `DEVELOPMENT-workspace.md` | composición: contratos y decisiones transversales | raíz del workspace |
 | `targets/opencode.json` | config del cliente openCode: reglas + skills + permisos | raíz del proyecto, como `opencode.json` |
-| `targets/cline.md` | puntero para Cline | `.clinerules/agent-baseline.md` |
-| `targets/kilo.md` | puntero para Kilo Code | `.kilocode/rules/agent-baseline.md` |
 
-Todo lo que está en `targets/` es **específico de un cliente**. El catálogo (reglas y skills) es agnóstico; esta carpeta solo traduce a cada cliente. El instalador resuelve `targets\<cliente>.*` según `-Target`: `none` (por defecto), `opencode`, `cline` o `kilo`. Sin `-Target`, no escribe archivos de cliente.
+Todo lo que está en `targets/` es **específico de un cliente**. El catálogo (reglas y skills) es agnóstico; esta carpeta solo traduce a cada cliente. El instalador usa `targets/opencode.json` para `-Target opencode` y genera los punteros de Cline (`.clinerules/agent-baseline.md`) y Kilo (`.kilocode/rules/agent-baseline.md`) en código, desde el mismo cuerpo que `AGENTS.md`, para que no deriven. Sin `-Target`, no escribe archivos de cliente.
 
 **Clientes que NO necesitan target**: Codex, Cursor y DeepSeek Harness leen `AGENTS.md` en la raíz del proyecto (Cursor y DSH también en subcarpetas), y ese puntero ya lo escribe el instalador. Un target para ellos sería un archivo redundante.
 
@@ -95,15 +96,15 @@ Todo lo que está en `targets/` es **específico de un cliente**. El catálogo (
 
 | Comando | Qué hace |
 |---|---|
-| `-Project <ruta>` | copia `.baseline/` (AGENTS.md, VERSION, skills), escribe el manifiesto y el puntero `AGENTS.md` |
+| `-Project <ruta>` | copia `.baseline/` (AGENTS.md, VERSION, skills), escribe el manifiesto, el puntero `AGENTS.md` y agrega `.baseline-backup/` a `.gitignore` |
 | `-Target <cliente>` | cliente a configurar: `none` (por defecto), `opencode`, `cline` o `kilo`; con `none` no escribe archivos de cliente |
 | `-Workspace <ruta>` | escribe `AGENTS.md` de ruteo y `DEVELOPMENT.md` de composición; no copia skills |
 | `-Update` | lee `.baseline.json`, refresca el conjunto declarado (reemplaza cada skill y quita las no incluidas), cambia el target si se pide —retirando el anterior— y reescribe el manifiesto |
-| `-Doctor` | compara hashes, avisa de derivas y de manifiestos incompletos, y si la versión instalada quedó atrás |
-| `-Uninstall` | quita `.baseline/`, el puntero, el archivo del target y los punteros conocidos de Cline/Kilo; conserva la memoria |
+| `-Doctor` | compara hashes y valida el puntero `AGENTS.md`, los archivos del target y que las skills instaladas coincidan con el manifiesto; avisa de derivas y de versión atrasada |
+| `-Uninstall` | quita `.baseline/`, el puntero, el archivo del target y los punteros conocidos de Cline/Kilo; conserva la memoria y la entrada de `.gitignore` |
 | `-WhatIf` | imprime el plan sin escribir |
 
-**Contrato de uninstall**: borra solo lo que agregó, deja `.baseline-backup/<fecha>/` con lo reemplazado, y nunca toca `.git`, `DEVELOPMENT.md` ni `README.md`.
+**Contrato de uninstall**: borra solo lo que agregó, deja `.baseline-backup/<fecha>/` con lo reemplazado, y nunca toca `.git`, `DEVELOPMENT.md` ni `README.md`. La entrada de `.gitignore` se conserva porque los respaldos siguen en disco.
 
 ## Herramientas
 
@@ -119,7 +120,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 .\tools\memory.ps1 -RequireMap
 ```
 
-`check.ps1` valida: frontmatter y `name` = carpeta, YAML citado, cuerpo ≤300, referencias citadas y alcanzables, solapamiento Jaccard entre descripciones, los 49 casos de eval, frescura de los marcadores, encoding (UTF-8 sin BOM, LF) e inventario declarado.
+`check.ps1` valida: frontmatter y `name` = carpeta, YAML citado, cuerpo ≤300, referencias citadas y alcanzables, solapamiento Jaccard entre descripciones, los 49 casos de eval, frescura de los marcadores, encoding (UTF-8 sin BOM, LF), inventario declarado y que `VERSION` tenga su entrada en `CHANGELOG.md`.
 
 `budget.ps1` mide lo que se paga: caracteres de cada description (cada request) y tokens de cada cuerpo (al abrir la skill). Falla si una se pasa del límite.
 
@@ -127,26 +128,30 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 `sync.ps1` compara por hash las copias espejo que viven en la carpeta padre (`AGENTS.md` y la skill de mantenimiento). Si la copia no existe —porque el proyecto se movió— informa "sin copia espejo" y no falla.
 
-## Validado (2026-10-23)
+## Validado (2026-11-08)
 
 - `check.ps1` en verde: 0 fallos, 0 avisos.
-- 16 skills, `name` = carpeta en 16/16.
+- 17 skills, `name` = carpeta en 17/17.
 - 0 referencias rotas, 0 huérfanas, 0 solapamientos sobre 0,5.
-- 47/47 casos de eval correctos.
+- 49/49 casos de eval correctos.
 - Todas ≤300 líneas de cuerpo.
-- Descripciones: 1.289 → **824 tokens por request** (−36%).
-- Peor caso por request: **~6.359 tokens** (`fastapi` con su description).
+- Descripciones: **824 tokens por request**; peor caso **~6.359 tokens** (`fastapi` con su description).
 - Catálogo en disco: ~44.019 tokens (suma de cuerpos, sin references).
+- `tools/test.ps1`: 20/20 casos del instalador.
 - `AGENTS.md`: 222 → 112 líneas, con regla de desempate entre skills, ruteo de workspace y las cuatro reglas recuperadas del repo.
 - Ciclo completo en un proyecto temporal con `.git` y `angular.json` (v0.1.1): `install` (target `none`) → `-Update` → `-Doctor` → `-Uninstall`, sin errores; al final solo quedan `.git`, `angular.json` y `.baseline-backup/`.
 - `-Skills` inválida se rechaza antes de escribir: exit 1, lista de skills válidas y carpeta intacta.
 - `-Target` inválido se rechaza antes de escribir, también con `-WhatIf`; el plan de `cline`/`kilo` muestra el puntero que crearía.
-- `-Update` de 2 skills a 1 quita la no declarada, la conserva en `.baseline-backup/` y deja el manifiesto con las 10 entradas de la skill restante.
-- `-Doctor` avisa de manifiesto incompleto: falta `.baseline/VERSION` o hay archivos de `.baseline/` sin hash.
+- `-Update` de 2 skills a 1 quita la no declarada, la conserva en `.baseline-backup/` y deja el manifiesto con las entradas de la skill restante más `memoria`.
+- `.gitignore`: la entrada `.baseline-backup/` se agrega una sola vez, conserva el contenido previo y no se duplica al repetir `-Update`.
+- Puntero heredado (líneas `> Instalado con agent-baseline ...`): la instalación lo reemplaza por un solo bloque con marcadores y conserva el texto propio.
+- `-Doctor` sano sale 0 y reporta puntero, target y skills; falla con exit 1 si falta el puntero del target o si `.baseline/skills/` no coincide con el manifiesto.
+- `-Doctor` avisa de manifiesto incompleto: falta `.baseline/VERSION` o hay archivos de `.baseline/` sin hash; si no hay manifiesto, indica el comando de instalación.
 - Manifiesto completo: `.baseline/VERSION` y cada `references/*.md`; editar un reference a mano hace que `-Doctor` lo reporte como modificado.
 - Tras una instalación correcta, `$LASTEXITCODE` vale 0.
 - `-Update` respalda `.baseline/` completo en `.baseline-backup/<fecha>/`.
 - Targets `opencode`, `cline` y `kilo`: crean su archivo al instalar y lo eliminan al desinstalar; la carga en cada cliente sigue sin verificarse.
+- `-Uninstall` conserva las reglas propias dentro del puntero de Cline/Kilo y elimina solo el bloque con marcadores.
 - Cambio de target: `cline`→`none` y `cline`→`kilo` retiran el puntero anterior; `opencode`→`none` retira `opencode.json`; `-Uninstall` elimina un `.clinerules` huérfano que ya no estaba en el manifiesto.
 - `opencode.json` fusionado: el manifiesto registra `targetPermissionsAdded`; al desinstalar se quitan los `permissions` añadidos si siguen iguales a la plantilla, y se conservan si el usuario los modificó.
 - Instalación real revisada y desinstalada (`LaserBoy-Arduino-2`, 2026-10-23): quedó sin `.baseline`, `.baseline.json` ni `opencode.json`, y su `README.md` y `DEVELOPMENT.md` no cambiaron.
@@ -160,9 +165,13 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 4. `CONTRIBUTING.md`: criterios para agregar o editar skills (hoy viven en este archivo).
 5. `ui-ux-mockup` sigue sin referencias (274 líneas en un solo archivo).
 6. Revisar profundidad de `aws`, `azure` y `oci` (102–104 líneas cada una).
-7. Evaluar `harness-freshness` como skill 16: audita que las afirmaciones de versión sigan vigentes.
+7. Evaluar `harness-freshness` como skill nueva: audita que las afirmaciones de versión sigan vigentes.
 8. Verificar en runtime `opencode.json` (carga de skills y permisos). El esquema ya está validado contra `https://opencode.ai/config.json` (2026-11-01): `permissions` es `array<{action, resource, effect}>` y `skills` es `array<string>`, igual que el template. Falta comprobar que un cliente real los aplique.
 9. **Soporte multi-target**: `-Target` como lista y conservar las puertas de los clientes no declarados. Hoy cambiar de target borra el puntero anterior (pasar a `opencode` elimina `.clinerules/agent-baseline.md`), y el manifiesto ya guarda `targets` como array.
+10. **`-Update` en un workspace**: un workspace no tiene manifiesto, así que `-Update` falla con el mensaje de instalación. Decidir si necesita su propio manifiesto o un refresco de plantillas.
+11. El instalador no comprueba que la plantilla que copia exista: si falta `templates/targets/opencode.json`, la fusión se omite en silencio. Validarla antes de escribir.
+12. Verificar que cada skill citada en `AGENTS.md` exista en `skills/`; hoy una cita a una skill retirada no rompe `check.ps1`.
+13. Unificar la fuente de proxy, CSP y `allowedHosts`: `angular/references/ssr.md` y `auth.md` se solapan y pueden derivar.
 
 ## Cómo agregar una skill
 

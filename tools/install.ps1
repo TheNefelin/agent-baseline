@@ -10,7 +10,7 @@
     -Workspace instala ruteo en la raiz de un workspace multi-proyecto
     -Mode      auto (por defecto), project o workspace. Fuerza el modo sin preguntar.
     -Update    refresca lo ya instalado segun el manifiesto
-    -Doctor    verifica hashes contra el manifiesto
+    -Doctor    verifica hashes, puntero, target y lista de skills contra el manifiesto
     -Uninstall quita solo lo que agrego, y conserva la memoria del proyecto
 
 .PARAMETER Skills
@@ -188,7 +188,7 @@ function Backup-File {
 }
 
 function Add-GitIgnoreEntry {
-    param([string]$Path)
+    param([string]$Path, [string]$BackupDir = '')
     $gitignore = Join-Path $Path '.gitignore'
     $entry = '.baseline-backup/'
     $header = '# agent-baseline: respaldos de instalacion'
@@ -196,6 +196,7 @@ function Add-GitIgnoreEntry {
         $text = [System.IO.File]::ReadAllText($gitignore)
         $lines = @($text -split "`r?`n")
         if (@($lines | Where-Object { $_.Trim() -eq $entry }).Count -gt 0) { return $false }
+        if ($BackupDir) { Backup-File -Path $gitignore -BackupDir $BackupDir }
         if ([string]::IsNullOrEmpty($text)) {
             Write-Utf8 $gitignore ("$header`n$entry`n")
         } else {
@@ -543,6 +544,10 @@ function Install-Project {
         Fail "Target desconocido: $Target. Validos: opencode, cline, kilo, none."
     }
 
+    if (Add-GitIgnoreEntry -Path $Path -BackupDir $backupDir) {
+        Write-Host ("  {0}: .baseline-backup/ agregado" -f '.gitignore')
+    }
+
     $files = [ordered]@{}
     foreach ($f in @(Get-ChildItem -LiteralPath $payload -Recurse -File | Sort-Object FullName)) {
         $rel = '.baseline/' + (($f.FullName.Substring($payload.Length + 1)) -replace '\\', '/')
@@ -718,14 +723,44 @@ function Remove-Project {
     Write-Host ("Backups disponibles en {0}" -f $BackupRoot)
 }
 
+function Test-DoctorPointer {
+    param([string]$Path, [string[]]$Expected)
+    $agents = Join-Path $Path 'AGENTS.md'
+    if (-not (Test-Path -LiteralPath $agents)) {
+        Write-Host "FALLO  falta AGENTS.md (puntero a .baseline/AGENTS.md)" -ForegroundColor Red
+        return $false
+    }
+    $text = [System.IO.File]::ReadAllText($agents)
+    $starts = @([regex]::Matches($text, '<!-- agent-baseline:start -->')).Count
+    if ($starts -ne 1) {
+        Write-Host ("FALLO  AGENTS.md tiene {0} bloques de agent-baseline; debe tener 1: corre -Update" -f $starts) -ForegroundColor Red
+        return $false
+    }
+    $declared = @(Get-PointerSkills -Text $text)
+    if (-not (Test-SameSkillSet -Declared $declared -Expected $Expected)) {
+        $declaredText = (@($declared) -join ', ')
+        $expectedText = (@($Expected) -join ', ')
+        Write-Host ("FALLO  el puntero declara [{0}] y el manifiesto [{1}]: corre -Update" -f $declaredText, $expectedText) -ForegroundColor Red
+        return $false
+    }
+    $count = @($declared).Count
+    Write-Host ("OK     AGENTS.md declara {0} skill(s)" -f $count) -ForegroundColor Green
+    return $true
+}
+
 function Test-Doctor {
     param([string]$Path)
     $manifestPath = Join-Path $Path $ManifestName
-    if (-not (Test-Path -LiteralPath $manifestPath)) { Fail "No hay manifiesto en $Path" }
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
+        Fail ("No hay manifiesto en {0}. Instala primero: `"{1}`" -Mode project -Project `"{0}`" -Skills <lista>" -f $Path, $PSCommandPath)
+    }
     $m = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     $bad = 0
+    $skills = @(@($m.skills) | Where-Object { $_ })
+    $targets = @()
+    if ($m.PSObject.Properties['targets']) { $targets = @(@($m.targets) | Where-Object { $_ }) }
     Write-Host ""
-    Write-Host ("Manifiesto: v{0}, {1}, {2} skill(s)" -f $m.baselineVersion, $m.mode, @($m.skills).Count)
+    Write-Host ("Manifiesto: v{0}, {1}, {2} skill(s)" -f $m.baselineVersion, $m.mode, $skills.Count)
     foreach ($prop in $m.files.PSObject.Properties) {
         $rel = $prop.Name
         $full = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
@@ -756,6 +791,82 @@ function Test-Doctor {
     if ($incomplete.Count -gt 0) {
         Write-Host ("AVISO  manifiesto incompleto: {0}. Corre -Update." -f ($incomplete -join '; ')) -ForegroundColor Yellow
     }
+
+    if (-not (Test-DoctorPointer -Path $Path -Expected $skills)) { $bad++ }
+
+    $skillsRoot = Join-Path $payload 'skills'
+    $installedSkills = @()
+    if (Test-Path -LiteralPath $skillsRoot) {
+        $installedSkills = @(Get-ChildItem -LiteralPath $skillsRoot -Directory | Select-Object -ExpandProperty Name)
+    }
+    if (-not (Test-SameSkillSet -Declared $installedSkills -Expected $skills)) {
+        $installedText = (@($installedSkills | Sort-Object) -join ', ')
+        $expectedText = (@($skills | Sort-Object) -join ', ')
+        Write-Host ("FALLO  skills instaladas [{0}] != manifiesto [{1}]: corre -Update" -f $installedText, $expectedText) -ForegroundColor Red
+        $bad++
+    } else {
+        Write-Host ("OK     skills instaladas: {0}" -f $skills.Count) -ForegroundColor Green
+    }
+
+    foreach ($t in $targets) {
+        if ($t -eq 'none') { continue }
+        if ($t -eq 'opencode') {
+            $cfgPath = Join-Path $Path 'opencode.json'
+            if (-not (Test-Path -LiteralPath $cfgPath)) {
+                Write-Host "FALLO  falta opencode.json (target opencode)" -ForegroundColor Red
+                $bad++
+                continue
+            }
+            try {
+                $cfg = [System.IO.File]::ReadAllText($cfgPath) | ConvertFrom-Json
+                $instructions = @()
+                if ($cfg.PSObject.Properties['instructions']) { $instructions = @($cfg.instructions) }
+                $skillPaths = @()
+                if ($cfg.PSObject.Properties['skills']) { $skillPaths = @($cfg.skills) }
+                if ($instructions -notcontains '.baseline/AGENTS.md' -or $skillPaths -notcontains '.baseline/skills') {
+                    Write-Host "FALLO  opencode.json no apunta a .baseline/AGENTS.md y .baseline/skills" -ForegroundColor Red
+                    $bad++
+                } else {
+                    Write-Host "OK     opencode.json apunta a .baseline/AGENTS.md y .baseline/skills" -ForegroundColor Green
+                }
+            } catch {
+                Write-Host "FALLO  opencode.json no es JSON valido" -ForegroundColor Red
+                $bad++
+            }
+            continue
+        }
+        if ($t -ne 'cline' -and $t -ne 'kilo') { continue }
+        $rel = '.clinerules/agent-baseline.md'
+        if ($t -eq 'kilo') { $rel = '.kilocode/rules/agent-baseline.md' }
+        $full = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -LiteralPath $full)) {
+            Write-Host ("FALLO  falta el puntero del target {0}: {1}" -f $t, $rel) -ForegroundColor Red
+            $bad++
+            continue
+        }
+        $text = [System.IO.File]::ReadAllText($full)
+        if ($text -notmatch '<!-- agent-baseline:start -->' -or $text -notmatch '\.baseline/AGENTS\.md') {
+            Write-Host ("FALLO  puntero mal formado para {0}: {1}" -f $t, $rel) -ForegroundColor Red
+            $bad++
+        } else {
+            Write-Host ("OK     puntero de {0}: {1}" -f $t, $rel) -ForegroundColor Green
+        }
+    }
+
+    $targetFiles = @()
+    if ($m.PSObject.Properties['targetFiles']) { $targetFiles = @(@($m.targetFiles) | Where-Object { $_ }) }
+    foreach ($rel in $targetFiles) {
+        $known = $false
+        if (($targets -contains 'cline') -and $rel -eq '.clinerules/agent-baseline.md') { $known = $true }
+        if (($targets -contains 'kilo') -and $rel -eq '.kilocode/rules/agent-baseline.md') { $known = $true }
+        if ($known) { continue }
+        $full = Join-Path $Path ($rel -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -LiteralPath $full)) {
+            Write-Host ("FALLO  falta el archivo del target: {0}" -f $rel) -ForegroundColor Red
+            $bad++
+        }
+    }
+
     $installed = $m.baselineVersion
     if ($installed -ne $Version) {
         Write-Host ("AVISO  instalado v{0}, disponible v{1}. Corre -Update." -f $installed, $Version) -ForegroundColor Yellow
@@ -819,7 +930,7 @@ if ($Mode -eq 'workspace' -and (Test-Path -LiteralPath (Join-Path $targetPath $M
 if ($Update) {
     $prevManifest = Join-Path $targetPath $ManifestName
     if (-not (Test-Path -LiteralPath $prevManifest)) {
-        Fail "No hay manifiesto en $targetPath. No hay nada que actualizar: instala primero."
+        Fail ("No hay manifiesto en {0}. Instala primero: `"{1}`" -Mode project -Project `"{0}`" -Skills <lista>" -f $targetPath, $PSCommandPath)
     }
     try { $mPrev = [System.IO.File]::ReadAllText($prevManifest) | ConvertFrom-Json } catch { $mPrev = $null }
     if ($mPrev -eq $null) { Fail "Manifiesto corrupto o ilegible" }

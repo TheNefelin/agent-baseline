@@ -42,14 +42,14 @@ frontend/
 ├── .baseline.json        manifiesto: versión, skills, hashes
 ├── AGENTS.md             puntero corto a .baseline/AGENTS.md
 ├── opencode.json         opcional: config del cliente con -Target opencode
-└── .baseline-backup/     respaldo de lo que se reemplazó (ignorado por git)
+└── .baseline-backup/     respaldo de lo que se reemplazó (el instalador lo agrega a .gitignore)
 ```
 
 Si el proyecto no existe o no tiene stack reconocible, el instalador pregunta antes de asumir. Agrega `-WhatIf` para ver el plan sin escribir nada.
 
 ```powershell
 .\tools\install.ps1 -Project . -WhatIf        # ver el plan
-.\tools\install.ps1 -Project . -Doctor        # verificar hashes
+.\tools\install.ps1 -Project . -Doctor        # verificar la instalación
 .\tools\install.ps1 -Project . -Update        # refrescar según el manifiesto
 .\tools\install.ps1 -Project . -Uninstall     # quitar solo lo instalado
 ```

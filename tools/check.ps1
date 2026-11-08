@@ -19,7 +19,8 @@
       - Encoding : el texto versionado debe ser UTF-8 sin BOM y con LF; los .ps1, ASCII
                    puro (un byte > 127 ahi suele ser mojibake).
       - Inventario: el conteo de skills y casos de eval declarado en README.md y
-                   DEVELOPMENT.md coincide con el catalogo real (evita drift silencioso).
+                   DEVELOPMENT.md coincide con el catalogo real (evita drift silencioso),
+                   y VERSION tiene su entrada en CHANGELOG.md.
 
 .PARAMETER MaxAgeDays
     Antiguedad maxima, en dias, de un marcador de frescura. Por defecto 180.
@@ -464,6 +465,22 @@ foreach ($rel in $declFiles) {
             }
             else { Write-Host ("  OK     {0}: {1} casos coinciden" -f $rel, $declaredC) -ForegroundColor DarkGray }
         }
+    }
+}
+# La version publicada debe tener su entrada en el changelog. Un VERSION nuevo sin
+# entrada deja el historial mintiendo sobre lo que cambio.
+$versionFile = Join-Path $Root 'VERSION'
+$changelogFile = Join-Path $Root 'CHANGELOG.md'
+if ((Test-Path -LiteralPath $versionFile) -and (Test-Path -LiteralPath $changelogFile)) {
+    $currentVersion = ([System.IO.File]::ReadAllText($versionFile, [System.Text.Encoding]::UTF8)).Trim()
+    $changelog = [System.IO.File]::ReadAllText($changelogFile, [System.Text.Encoding]::UTF8)
+    $pattern = "(?m)^##\s+\[" + [regex]::Escape($currentVersion) + "\]"
+    if ($currentVersion -and $changelog -notmatch $pattern) {
+        $declBad++
+        Add-Fail "VERSION declara $currentVersion, pero CHANGELOG.md no tiene la entrada '## [$currentVersion]'"
+        Write-Host ("  FALLO  CHANGELOG.md no tiene entrada para {0}" -f $currentVersion) -ForegroundColor Red
+    } else {
+        Write-Host ("  OK     CHANGELOG.md tiene la entrada {0}" -f $currentVersion) -ForegroundColor DarkGray
     }
 }
 if ($declChecked -eq 0) { Write-Host "  OK: sin archivos de inventario que revisar." -ForegroundColor Green }

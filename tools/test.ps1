@@ -22,6 +22,18 @@ function Test-Case {
     }
 }
 
+# Las pruebas de exit != 0 corren el instalador en un proceso hijo: asi el 'exit'
+# del script no compite con el flujo de este archivo.
+$ShellExe = 'powershell'
+try { $shellPath = (Get-Process -Id $PID).Path; if ($shellPath) { $ShellExe = $shellPath } } catch {}
+
+function Invoke-InstallChild {
+    param([string[]]$CliArgs)
+    $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Install) + $CliArgs
+    $out = & $ShellExe @all 2>&1
+    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = (@($out) -join "`n") }
+}
+
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("agent-baseline-test-" + [guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Force -Path $temp | Out-Null
 
@@ -133,6 +145,130 @@ try {
         & $Install -Project $proj -Skills 'angular,sql' -Target none -Force | Out-Null
         if (-not (Test-Path (Join-Path $proj '.baseline\skills\angular'))) { throw "No instalo angular" }
         if (-not (Test-Path (Join-Path $proj '.baseline\skills\sql'))) { throw "No instalo sql" }
+    }
+
+    Test-Case "Target cline crea y quita su puntero" {
+        $proj = Join-Path $temp 'p10'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular -Target cline -Force | Out-Null
+        $ptr = Join-Path $proj '.clinerules/agent-baseline.md'
+        if (-not (Test-Path -LiteralPath $ptr)) { throw "No se creo el puntero de Cline" }
+        $t = [System.IO.File]::ReadAllText($ptr)
+        if ($t -notmatch '\.baseline/AGENTS\.md') { throw "El puntero de Cline no deriva a .baseline/AGENTS.md" }
+        & $Install -Project $proj -Uninstall -Force | Out-Null
+        if (Test-Path -LiteralPath $ptr) { throw "No se elimino el puntero de Cline" }
+    }
+
+    Test-Case "Target kilo crea y quita su puntero" {
+        $proj = Join-Path $temp 'p11'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular -Target kilo -Force | Out-Null
+        $ptr = Join-Path $proj '.kilocode/rules/agent-baseline.md'
+        if (-not (Test-Path -LiteralPath $ptr)) { throw "No se creo el puntero de Kilo" }
+        $t = [System.IO.File]::ReadAllText($ptr)
+        if ($t -notmatch '\.baseline/AGENTS\.md') { throw "El puntero de Kilo no deriva a .baseline/AGENTS.md" }
+        & $Install -Project $proj -Uninstall -Force | Out-Null
+        if (Test-Path -LiteralPath $ptr) { throw "No se elimino el puntero de Kilo" }
+    }
+
+    Test-Case "Uninstall conserva reglas propias en el puntero de Cline" {
+        $proj = Join-Path $temp 'p12'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        $ptr = Join-Path $proj '.clinerules/agent-baseline.md'
+        New-Item -ItemType Directory -Force -Path (Split-Path $ptr -Parent) | Out-Null
+        [System.IO.File]::WriteAllText($ptr, "# Mis reglas`nNo borrar esta linea`n", $Utf8)
+        & $Install -Project $proj -Skills angular -Target cline -Force | Out-Null
+        $t = [System.IO.File]::ReadAllText($ptr)
+        if ($t -notmatch 'No borrar esta linea') { throw "La instalacion perdio las reglas propias" }
+        & $Install -Project $proj -Uninstall -Force | Out-Null
+        if (-not (Test-Path -LiteralPath $ptr)) { throw "Se borro el puntero con reglas propias" }
+        $t2 = [System.IO.File]::ReadAllText($ptr)
+        if ($t2 -notmatch 'No borrar esta linea') { throw "Se perdieron las reglas propias al desinstalar" }
+        if ($t2 -match 'agent-baseline') { throw "Quedo rastro del bloque al desinstalar" }
+    }
+
+    Test-Case "La skill nuclear memoria viaja siempre" {
+        $proj = Join-Path $temp 'p13'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
+        if (-not (Test-Path (Join-Path $proj '.baseline\skills\memoria'))) { throw "No se instalo la skill nuclear memoria" }
+        $m = [System.IO.File]::ReadAllText((Join-Path $proj '.baseline.json')) | ConvertFrom-Json
+        if (@($m.skills) -notcontains 'memoria') { throw "El manifiesto no declara memoria" }
+    }
+
+    Test-Case ".gitignore recibe .baseline-backup/ una sola vez" {
+        $proj = Join-Path $temp 'p14'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        $gi = Join-Path $proj '.gitignore'
+        [System.IO.File]::WriteAllText($gi, "node_modules/`n", $Utf8)
+        & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
+        $first = [System.IO.File]::ReadAllText($gi)
+        if ($first -notmatch 'node_modules') { throw "Se perdio el contenido previo de .gitignore" }
+        if (@([regex]::Matches($first, '(?m)^\.baseline-backup/$')).Count -ne 1) { throw "No se agrego .baseline-backup/ una sola vez" }
+        if (@([regex]::Matches($first, 'agent-baseline: respaldos')).Count -ne 1) { throw "No se agrego la cabecera de agent-baseline" }
+        & $Install -Project $proj -Update -Force | Out-Null
+        $second = [System.IO.File]::ReadAllText($gi)
+        if (@([regex]::Matches($second, '(?m)^\.baseline-backup/$')).Count -ne 1) { throw "Se duplico .baseline-backup/ al actualizar" }
+        if (@([regex]::Matches($second, 'agent-baseline: respaldos')).Count -ne 1) { throw "Se duplico la cabecera al actualizar" }
+    }
+
+    Test-Case "Puntero heredado se reemplaza sin duplicar bloques" {
+        $proj = Join-Path $temp 'p15'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        $agents = Join-Path $proj 'AGENTS.md'
+        $legacy = '# Reglas del proyecto' + "`n`n" +
+            '> Las reglas de este proyecto viven en `.baseline/AGENTS.md`. Leelas antes de tocar codigo.' + "`n" +
+            '> Instalado con agent-baseline 0.1.1. No edites este bloque: edita `.baseline/AGENTS.md`.' + "`n" +
+            '> Skills instaladas: `angular` en `.baseline/skills/<nombre>/SKILL.md`.' + "`n`n" +
+            'Mi regla propia.' + "`n"
+        [System.IO.File]::WriteAllText($agents, $legacy, $Utf8)
+        & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
+        $t = [System.IO.File]::ReadAllText($agents)
+        if (@([regex]::Matches($t, 'agent-baseline:start')).Count -ne 1) { throw "Se duplico el bloque del puntero" }
+        if ($t -match 'Instalado con agent-baseline 0\.1\.1') { throw "Quedo la linea heredada del puntero" }
+        if ($t -notmatch 'Mi regla propia') { throw "Se perdio el contenido propio del puntero" }
+    }
+
+    Test-Case "-Doctor sano sale 0 y valida puntero, target y skills" {
+        $proj = Join-Path $temp 'p16'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular -Target cline -Force | Out-Null
+        $r = Invoke-InstallChild -CliArgs @('-Project', $proj, '-Doctor')
+        if ($r.ExitCode -ne 0) { throw ("-Doctor sano salio {0}: {1}" -f $r.ExitCode, $r.Output) }
+        if ($r.Output -notmatch 'AGENTS\.md declara') { throw "Doctor no valido el puntero" }
+        if ($r.Output -notmatch 'puntero de cline') { throw "Doctor no valido el target" }
+        if ($r.Output -notmatch 'skills instaladas') { throw "Doctor no valido las skills instaladas" }
+    }
+
+    Test-Case "-Doctor falla si falta el puntero del target" {
+        $proj = Join-Path $temp 'p17'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular -Target cline -Force | Out-Null
+        Remove-Item -LiteralPath (Join-Path $proj '.clinerules/agent-baseline.md') -Force
+        $r = Invoke-InstallChild -CliArgs @('-Project', $proj, '-Doctor')
+        if ($r.ExitCode -ne 1) { throw ("Esperaba exit 1; obtuve {0}" -f $r.ExitCode) }
+        if ($r.Output -notmatch 'falta el puntero del target cline') { throw "El mensaje no identifica el target que falta" }
+    }
+
+    Test-Case "-Doctor falla si las skills instaladas no coinciden" {
+        $proj = Join-Path $temp 'p18'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
+        $extra = Join-Path $proj '.baseline\skills\docker'
+        New-Item -ItemType Directory -Force -Path $extra | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $extra 'SKILL.md'), "# docker`n", $Utf8)
+        $r = Invoke-InstallChild -CliArgs @('-Project', $proj, '-Doctor')
+        if ($r.ExitCode -ne 1) { throw ("Esperaba exit 1; obtuve {0}" -f $r.ExitCode) }
+        if ($r.Output -notmatch 'skills instaladas') { throw "El mensaje no reporta el desajuste de skills" }
+    }
+
+    Test-Case "-Update sin manifiesto indica como instalar" {
+        $proj = Join-Path $temp 'p19'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        $r = Invoke-InstallChild -CliArgs @('-Project', $proj, '-Update', '-Skills', 'angular')
+        if ($r.ExitCode -ne 1) { throw ("Esperaba exit 1; obtuve {0}" -f $r.ExitCode) }
+        if ($r.Output -notmatch 'install\.ps1') { throw "El mensaje no indica el comando de instalacion" }
+        if ($r.Output -notmatch '\-Project') { throw "El mensaje no incluye -Project" }
     }
 } finally {
     try { Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue } catch {}

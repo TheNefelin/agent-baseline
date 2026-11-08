@@ -8,12 +8,26 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
-## [0.2.1] - 2026-11-01
+## [0.2.3] - 2026-11-08
 
 ### Corregido
 
-- Eval `arduino-amb-01`: la description de `ui-ux-mockup` ya no incluye `apps web`, que le daba el mismo puntaje que `arduino` por la palabra común `web`.
-- `tools/check.ps1`: los empates de puntaje se resuelven por nombre, así el resultado no depende de la estabilidad de `Sort-Object`.
+- `tools/install.ps1`: `.gitignore` recibe una entrada idempotente de `.baseline-backup/` con cabecera propia; antes los respaldos de `-Update` y `-Uninstall` quedaban sin ignorar.
+- `-Doctor` valida además el puntero `AGENTS.md`, los archivos del target y que las skills instaladas coincidan con el manifiesto. Antes solo comparaba hashes, así que un puntero sin bloque o con skills retiradas pasaba en verde.
+- `-Doctor` y `-Update` sin manifiesto indican el comando exacto de instalación en lugar de terminar con un error sin salida.
+- Se eliminaron `templates/targets/cline.md` y `templates/targets/kilo.md`: el instalador genera esos punteros en código desde el mismo cuerpo que `AGENTS.md`, y las plantillas no se usaban.
+- `skills/angular/references/auth.md`: eliminado el bloque multi-tenant duplicado y la sección de signals repetida.
+- `skills/fastapi/references/auth.md`: `verify_api_key` con `compare_digest` y guardia para cabecera ausente; `dependencies.py` queda como fachada de `verify_api_key`, `require_admin` y `require_user`; `_required()` reemplazado por `API_KEY: str` de `Settings`.
+
+### Agregado
+
+- `tools/check.ps1`: valida que la versión de `VERSION` tenga su entrada `## [x.y.z]` en `CHANGELOG.md`.
+- `tools/test.ps1`: casos de targets `cline` y `kilo`, conservación de reglas propias en el puntero, skill nuclear `memoria`, `.gitignore` idempotente, puntero heredado sin duplicación, `-Doctor` sano y en fallo, y `-Update` sin manifiesto.
+
+### Cambiado
+
+- `-Target cline` y `-Target kilo` generan el puntero con marcadores y lista de skills; no dependen de una plantilla por cliente.
+- `README.md` y `DEVELOPMENT.md` describen el nuevo alcance de `-Doctor` y la generación de punteros.
 
 ## [0.2.2] - 2026-11-01
 
@@ -25,6 +39,13 @@ Criterio de versión:
 - `AGENTS.md` §6 indica dónde viven las skills instaladas y que se carga solo la que corresponde.
 - `tools/verify.ps1` incluye `tools/test.ps1`: un caso roto del instalador ya no puede pasar desapercibido con la verificación en verde.
 - `tools/test.ps1`: el caso del bloque de marcadores usaba `-Skills none`, que la validación rechaza desde 0.1.1; ahora usa una skill real.
+
+## [0.2.1] - 2026-11-01
+
+### Corregido
+
+- Eval `arduino-amb-01`: la description de `ui-ux-mockup` ya no incluye `apps web`, que le daba el mismo puntaje que `arduino` por la palabra común `web`.
+- `tools/check.ps1`: los empates de puntaje se resuelven por nombre, así el resultado no depende de la estabilidad de `Sort-Object`.
 
 ## [0.2.0] - 2026-10-31
 
