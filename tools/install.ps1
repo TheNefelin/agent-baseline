@@ -187,6 +187,48 @@ function Backup-File {
     }
 }
 
+function Sync-AdapterSkill {
+    param([string]$Skill, [string]$SourceDir, [string]$DestDir)
+    $src = Join-Path $SourceDir $Skill
+    if (-not (Test-Path -LiteralPath $src)) { return }
+    New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
+    $dst = Join-Path $DestDir $Skill
+    if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Recurse -Force }
+    Copy-Item -LiteralPath $src -Destination $dst -Recurse -Force
+}
+
+function Sync-AdapterSkills {
+    param([string]$SourceDir, [string]$DestDir, [string[]]$Declared)
+    $declared = @(@($Declared) | Where-Object { $_ } | Select-Object -Unique)
+    New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
+    $valid = @(Get-SkillNames)
+    foreach ($d in @(Get-ChildItem -LiteralPath $DestDir -Directory -ErrorAction SilentlyContinue)) {
+        if ($valid -contains $d.Name -and $declared -notcontains $d.Name) {
+            Remove-Item -LiteralPath $d.FullName -Recurse -Force
+        }
+    }
+    foreach ($s in $declared) {
+        Sync-AdapterSkill -Skill $s -SourceDir $SourceDir -DestDir $DestDir
+    }
+}
+
+function Remove-AdapterSkills {
+    param([string]$DestDir, [string[]]$Declared)
+    if (-not (Test-Path -LiteralPath $DestDir)) { return }
+    foreach ($s in @($Declared)) {
+        if ([string]::IsNullOrWhiteSpace($s)) { continue }
+        $dst = Join-Path $DestDir $s
+        if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Recurse -Force }
+    }
+    if (@(Get-ChildItem -LiteralPath $DestDir -Force -ErrorAction SilentlyContinue).Count -eq 0) {
+        Remove-Item -LiteralPath $DestDir -Force -ErrorAction SilentlyContinue
+        $parent = Split-Path $DestDir -Parent
+        if ((Test-Path -LiteralPath $parent) -and @(Get-ChildItem -LiteralPath $parent -Force -ErrorAction SilentlyContinue).Count -eq 0) {
+            Remove-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Add-GitIgnoreEntry {
     param([string]$Path, [string]$BackupDir = '')
     $gitignore = Join-Path $Path '.gitignore'
@@ -205,6 +247,24 @@ function Add-GitIgnoreEntry {
         }
     } else {
         Write-Utf8 $gitignore ("$header`n$entry`n")
+    }
+    return $true
+}
+
+function Add-GitIgnoreAdapters {
+    param([string]$Path)
+    $gitignore = Join-Path $Path '.gitignore'
+    $entries = @('.agents/skills/', '.clinerules/', '.claude/skills/', '.kilocode/')
+    $header = '# agent-baseline: adaptadores de descubrimiento (generados)'
+    $text = if (Test-Path -LiteralPath $gitignore) { [System.IO.File]::ReadAllText($gitignore) } else { '' }
+    $missing = @($entries | Where-Object { $text -notmatch [regex]::Escape($_) })
+    if ($missing.Count -eq 0) { return $false }
+    $block = $header + "`n" + ($missing -join "`n") + "`n"
+    if ([string]::IsNullOrEmpty($text)) {
+        Write-Utf8 $gitignore $block
+    } else {
+        $add = if ($text.EndsWith("`n")) { '' } else { "`n" }
+        Write-Utf8 $gitignore ($text + $add + "`n" + $block)
     }
     return $true
 }
@@ -289,7 +349,8 @@ function Get-PointerBody {
     } else {
         $skillsLine = "`n> Sin skills instaladas: solo aplican las reglas de ``.baseline/AGENTS.md``."
     }
-    return ("# $Header" + "`n`n> Las reglas de este proyecto viven en ``.baseline/AGENTS.md``. Leelas antes de tocar codigo." + $skillsLine + "`n> Instalado con agent-baseline $Version. No edites este bloque: edita ``.baseline/AGENTS.md``.")
+    $critical = "`n> Reglas criticas (no negociables): no ejecutar ``git commit/push/add``, no leer ``.env`` real, no ``DROP``/``TRUNCATE``/``DELETE`` masivo. Si una tarea las requiere, detente y consulta."
+    return ("# $Header" + "`n`n> Las reglas de este proyecto viven en ``.baseline/AGENTS.md``. Leelas antes de tocar codigo." + $skillsLine + $critical + "`n> Instalado con agent-baseline $Version. No edites este bloque: edita ``.baseline/AGENTS.md``.")
 }
 
 function Merge-MarkedBlock {
@@ -429,6 +490,14 @@ function Install-Project {
         if (-not (Test-Path -LiteralPath (Join-Path $dst 'SKILL.md'))) { Fail "No se pudo copiar la skill: $s" }
     }
 
+    # Adaptadores de descubrimiento (gitignored): materializados desde .baseline/skills
+    $agentsSkillsDir = Join-Path $Path '.agents/skills'
+    Sync-AdapterSkills -SourceDir $skillsDst -DestDir $agentsSkillsDir -Declared $SkillList
+    if ($Target -eq 'cline') {
+        $clineSkillsDir = Join-Path $Path '.clinerules/skills'
+        Sync-AdapterSkills -SourceDir $skillsDst -DestDir $clineSkillsDir -Declared $SkillList
+    }
+
     $rootAgents = Join-Path $Path 'AGENTS.md'
     $existingPointer = ''
     if (Test-Path -LiteralPath $rootAgents) {
@@ -546,6 +615,9 @@ function Install-Project {
 
     if (Add-GitIgnoreEntry -Path $Path -BackupDir $backupDir) {
         Write-Host ("  {0}: .baseline-backup/ agregado" -f '.gitignore')
+    }
+    if (Add-GitIgnoreAdapters -Path $Path) {
+        Write-Host ("  {0}: adaptadores de descubrimiento agregados" -f '.gitignore')
     }
 
     $files = [ordered]@{}
@@ -719,6 +791,12 @@ function Remove-Project {
         Remove-PointerFile -Path $pointerFile -Label $rel
     }
 
+    # Quitar adaptadores de descubrimiento materializados
+    $declaredSkills = @()
+    if ($m -ne $null -and $m.PSObject.Properties['skills']) { $declaredSkills = @(@($m.skills) | Where-Object { $_ }) }
+    Remove-AdapterSkills -DestDir (Join-Path $Path '.agents/skills') -Declared $declaredSkills
+    Remove-AdapterSkills -DestDir (Join-Path $Path '.clinerules/skills') -Declared $declaredSkills
+
     Write-Host "Listo. La memoria del proyecto (DEVELOPMENT.md, README.md) no se toco." -ForegroundColor Green
     Write-Host ("Backups disponibles en {0}" -f $BackupRoot)
 }
@@ -806,6 +884,33 @@ function Test-Doctor {
         $bad++
     } else {
         Write-Host ("OK     skills instaladas: {0}" -f $skills.Count) -ForegroundColor Green
+    }
+
+    # Adaptadores de descubrimiento: preparacion (aviso, no falla el exit code)
+    $agentsSkills = Join-Path $Path '.agents/skills'
+    if (Test-Path -LiteralPath $agentsSkills) {
+        $adapterInstalled = @()
+        if (Test-Path -LiteralPath $agentsSkills) { $adapterInstalled = @(Get-ChildItem -LiteralPath $agentsSkills -Directory | Select-Object -ExpandProperty Name) }
+        if (Test-SameSkillSet -Declared $adapterInstalled -Expected $skills) {
+            Write-Host ("OK     adaptador .agents/skills: {0} skill(s)" -f $skills.Count) -ForegroundColor Green
+        } else {
+            Write-Host "AVISO  .agents/skills desincronizado; corre -Update" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "AVISO  falta .agents/skills (descubrimiento nativo); corre -Update" -ForegroundColor Yellow
+    }
+    if ($targets -contains 'cline') {
+        $clineSkills = Join-Path $Path '.clinerules/skills'
+        if (Test-Path -LiteralPath $clineSkills) {
+            $cs = @(Get-ChildItem -LiteralPath $clineSkills -Directory | Select-Object -ExpandProperty Name)
+            if (Test-SameSkillSet -Declared $cs -Expected $skills) {
+                Write-Host ("OK     adaptador .clinerules/skills: {0} skill(s)" -f $skills.Count) -ForegroundColor Green
+            } else {
+                Write-Host "AVISO  .clinerules/skills desincronizado; corre -Update" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "AVISO  falta .clinerules/skills; corre -Update" -ForegroundColor Yellow
+        }
     }
 
     foreach ($t in $targets) {

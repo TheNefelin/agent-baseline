@@ -71,7 +71,7 @@ templates/                       plantillas de proyecto y de workspace
 | 2026-10-31 | Aceptado | El checkpoint de sesión vive en `.baseline/session.md` | El instalador ya lo crea ahí; §11 apuntaba a `.harness/`, una ruta que nunca existió |
 | 2026-11-01 | Aceptado | El puntero `AGENTS.md` declara las skills instaladas con su ruta | Con `-Target none` por defecto, ningún cliente sabía que existían y el agente trabajaba sin ellas |
 | 2026-11-08 | Aceptado | Los punteros de Cline y Kilo se generan en código desde el cuerpo del puntero | Una plantilla por cliente duplicaba el texto y derivaba; `targets/` queda solo para `opencode.json` |
-| 2026-11-08 | Aceptado | `.gitignore` recibe `.baseline-backup/` con cabecera e inserción idempotente | Los respaldos no deben ensuciar el repo y repetir `-Update` no debe duplicar la línea |
+| 2026-11-08 | Aceptado | 0.3.0: adaptadores de descubrimiento materializados (gitignored) desde `.baseline/skills` a `.agents/skills` (openCode/Codex/Cursor/Kilo) y `.clinerules/skills` (Cline), con `-Doctor` separando salud de preparacion y prohibiciones criticas inline en los punteros | El descubrimiento nativo fuera de openCode fallaba; el principio "fuente única, nunca copia" se mantiene en git y la materializacion sigue el patrón propuesto en 2026-10-23 (`harness/skills/` ignorado y materializado con `-Update`) |
 | 2026-11-08 | Aceptado | `-Doctor` sale 1 si falta el puntero, el target o una skill instalada; la versión atrasada queda como aviso | Un verde estructural no debe ocultar una instalación incoherente |
 
 ## Plantillas
@@ -166,7 +166,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 5. `ui-ux-mockup` sigue sin referencias (274 líneas en un solo archivo).
 6. Revisar profundidad de `aws`, `azure` y `oci` (102–104 líneas cada una).
 7. Evaluar `harness-freshness` como skill nueva: audita que las afirmaciones de versión sigan vigentes.
-8. Verificar en runtime `opencode.json` (carga de skills y permisos). El esquema ya está validado contra `https://opencode.ai/config.json` (2026-11-01): `permissions` es `array<{action, resource, effect}>` y `skills` es `array<string>`, igual que el template. Falta comprobar que un cliente real los aplique.
+8. Verificar en runtime `opencode.json` y los adaptadores (carga de skills y permisos). El esquema ya está validado contra `https://opencode.ai/config.json` (2026-11-01): `permissions` es `array<{action, resource, effect}>` y `skills` es `array<string>`, igual que el template. 0.3.0 añade adaptadores `.agents/skills` y `.clinerules/skills` (gitignored) para descubrimiento nativo. Falta comprobar que cada cliente los descubra y aplique las reglas.
 9. **Soporte multi-target**: `-Target` como lista y conservar las puertas de los clientes no declarados. Hoy cambiar de target borra el puntero anterior (pasar a `opencode` elimina `.clinerules/agent-baseline.md`), y el manifiesto ya guarda `targets` como array.
 10. **`-Update` en un workspace**: un workspace no tiene manifiesto, así que `-Update` falla con el mensaje de instalación. Decidir si necesita su propio manifiesto o un refresco de plantillas.
 11. El instalador no comprueba que la plantilla que copia exista: si falta `templates/targets/opencode.json`, la fusión se omite en silencio. Validarla antes de escribir.

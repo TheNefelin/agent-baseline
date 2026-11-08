@@ -41,6 +41,7 @@ frontend/
 ├── .baseline/            AGENTS.md, VERSION y las skills instaladas
 ├── .baseline.json        manifiesto: versión, skills, hashes
 ├── AGENTS.md             puntero corto a .baseline/AGENTS.md
+├── .agents/skills/       adaptador de descubrimiento (generado, gitignored): openCode, Codex, Cursor, Kilo
 ├── opencode.json         opcional: config del cliente con -Target opencode
 └── .baseline-backup/     respaldo de lo que se reemplazó (el instalador lo agrega a .gitignore)
 ```

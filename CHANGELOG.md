@@ -8,6 +8,18 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.3.0] - 2026-11-08
+
+### Agregado
+- Adaptadores de descubrimiento materializados (gitignored): `.agents/skills/` para openCode, Codex, Cursor y Kilo; `.clinerules/skills/` para Cline. Se crean con `-Update` desde `.baseline/skills` y se re-sincronizan en cada actualizacion.
+- `-Doctor` distingue salud (exit code) de preparacion (aviso): falta de adaptadores es aviso, no fallo.
+- Prohibiciones criticas inline en los punteros (`git commit/push/add`, `.env` real, `DROP`/`TRUNCATE`/`DELETE` masivo) para que esten en contexto aunque el agente no abra `.baseline/AGENTS.md`.
+- `.gitignore` recibe las entradas de los adaptadores de descubrimiento (`.agents/skills/`, `.clinerules/`, `.claude/skills/`, `.kilocode/`).
+
+### Cambiado
+- `-Update` materializa y re-sincroniza los adaptadores de descubrimiento ademas de `.baseline/`.
+- `-Uninstall` retira los adaptadores materializados ademas de los punteros.
+
 ## [0.2.3] - 2026-11-08
 
 ### Corregido
