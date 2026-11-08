@@ -78,7 +78,7 @@ Cuenta las carpetas hijas directas con .git. Si hay >=2, clona https://github.co
 **Actualizar:**
 
 ```
-Actualiza agent-baseline en este proyecto con tools/install.ps1 -Project . -Update usando el manifiesto actual. Revisa con -Doctor tras actualizar. No hagas commit ni push.
+Actualiza agent-baseline en este proyecto con tools/install.ps1 -Project . -Update usando el manifiesto actual. Revisa con -Doctor tras actualizar. Para cambiar de harness, añade -Target cline (o kilo/opencode). No hagas commit ni push.
 ```
 
 **Desinstalar:**
