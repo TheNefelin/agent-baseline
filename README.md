@@ -61,12 +61,31 @@ Plantillas: `templates/AGENTS-workspace.md` y `templates/DEVELOPMENT-workspace.m
 
 ## Prompts para el agente
 
-Pégalos en el chat:
+Copia y pega el que corresponda. El agente clona el catálogo dentro del proyecto, ejecuta el instalador y elimina el clon al terminar.
 
-- **Instalar (proyecto único):** `Analiza la estructura. Si hay 1 repositorio .git o es un solo proyecto, instala agent-baseline con tools/install.ps1 -Mode project -Project . Usa -WhatIf primero, detecta o pregunta las skills, deja -Target none salvo que te lo pida explícitamente. Verifica con -Doctor tras instalar. No hagas commit ni push.`
-- **Instalar (workspace):** `Cuenta las carpetas hijas directas con .git. Si hay >=2, instala en modo workspace con tools/install.ps1 -Mode workspace -Workspace .. Usa las plantillas templates/AGENTS-workspace.md y templates/DEVELOPMENT-workspace.md. Cada subproyecto debe seguir siendo autosuficiente. Usa -WhatIf primero. No hagas commit ni push.`
-- **Actualizar:** `Actualiza agent-baseline en este proyecto con tools/install.ps1 -Project . -Update usando el manifiesto actual. Revisa con -Doctor tras actualizar. No hagas commit ni push.`
-- **Desinstalar:** `Desinstala agent-baseline de este proyecto con tools/install.ps1 -Project . -Uninstall. Conserva AGENTS.md/DEVELOPMENT.md si no son del instalador, respeta opencode.json fusionado y no toques memoria del proyecto. No hagas commit ni push.`
+**Instalar (proyecto único):**
+
+```
+Analiza la estructura. Si hay 1 repositorio .git o es un solo proyecto, clona https://github.com/TheNefelin/agent-baseline en una carpeta temporal del proyecto, instala agent-baseline con tools/install.ps1 -Mode project -Project . usando -WhatIf primero, detecta o pregunta las skills, deja -Target none salvo que te lo pida explícitamente. Verifica con -Doctor tras instalar. Elimina la carpeta del catálogo al terminar. No hagas commit ni push.
+```
+
+**Instalar (workspace):**
+
+```
+Cuenta las carpetas hijas directas con .git. Si hay >=2, clona https://github.com/TheNefelin/agent-baseline en una carpeta temporal, instala en modo workspace con tools/install.ps1 -Mode workspace -Workspace . usando las plantillas templates/AGENTS-workspace.md y templates/DEVELOPMENT-workspace.md. Cada subproyecto debe seguir siendo autosuficiente. Usa -WhatIf primero. Elimina la carpeta del catálogo al terminar. No hagas commit ni push.
+```
+
+**Actualizar:**
+
+```
+Actualiza agent-baseline en este proyecto con tools/install.ps1 -Project . -Update usando el manifiesto actual. Revisa con -Doctor tras actualizar. No hagas commit ni push.
+```
+
+**Desinstalar:**
+
+```
+Desinstala agent-baseline de este proyecto con tools/install.ps1 -Project . -Uninstall. Conserva AGENTS.md/DEVELOPMENT.md si no son del instalador, respeta opencode.json fusionado y no toques memoria del proyecto. No hagas commit ni push.
+```
 
 ## Uso con agentes
 
