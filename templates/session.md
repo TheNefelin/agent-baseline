@@ -15,9 +15,9 @@
 
 - ...
 
-## Pruebas ejecutadas y resultado real
+## Verificación (solo el resultado final)
 
-- ...
+- Qué comandos se ejecutaron y con qué resultado real, en una línea; sin pegar salidas.
 
 ## Bloqueos
 

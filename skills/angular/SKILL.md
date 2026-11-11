@@ -208,7 +208,7 @@ protected readonly submitForm = output<{ id: number; data: SaveModel }>();
 
 - `src/server.ts`: Express + proxy `/ssr-api/...` + handlers multipart validados con `req.is('multipart/form-data')`.
 - `app.routes.server.ts`: `RenderMode` por ruta (`Prerender` para contenido, `Server` para datos por request, `Client` para paneles autenticados).
-- `npm start` apunta al servidor de producción (`node dist/.../server/server.mjs`), nunca a `ng serve`.
+- `pnpm serve:ssr` (o el script equivalente del proyecto) apunta al servidor de producción (`node dist/.../server/server.mjs`), nunca a `ng serve`.
 - `JSON.parse` sobre respuestas del backend siempre con guarda: una respuesta no-JSON debe devolver `{ detail }`, no un 502 opaco.
 
 ---

@@ -187,14 +187,49 @@ function Backup-File {
     }
 }
 
+function Remove-AdapterPath {
+    param([string]$Path)
+    $item = $null
+    try { $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop } catch { $item = $null }
+    if ($null -eq $item) { return }
+    $isReparse = ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
+    if ($isReparse) {
+        try { [System.IO.Directory]::Delete($Path) } catch { Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue }
+    } else {
+        Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 function Sync-AdapterSkill {
     param([string]$Skill, [string]$SourceDir, [string]$DestDir)
     $src = Join-Path $SourceDir $Skill
     if (-not (Test-Path -LiteralPath $src)) { return }
     New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
     $dst = Join-Path $DestDir $Skill
-    if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Recurse -Force }
-    Copy-Item -LiteralPath $src -Destination $dst -Recurse -Force
+    $existing = $null
+    try { $existing = Get-Item -LiteralPath $dst -Force -ErrorAction Stop } catch { $existing = $null }
+    if ($null -ne $existing) { Remove-AdapterPath -Path $dst }
+    # Junction (Windows) / symlink: una sola fuente fisica, sin duplicacion.
+    # Fallback a copia si el sistema de archivos no lo permite.
+    $created = $false
+    try {
+        $srcResolved = (Resolve-Path -LiteralPath $src).Path
+        New-Item -ItemType Junction -Path $dst -Target $srcResolved -ErrorAction Stop | Out-Null
+        $created = $true
+    } catch {
+        $created = $false
+    }
+    if (-not $created) {
+        try {
+            $srcResolved = (Resolve-Path -LiteralPath $src).Path
+            New-Item -ItemType SymbolicLink -Path $dst -Target $srcResolved -ErrorAction Stop | Out-Null
+            $created = $true
+        } catch {
+            $created = $false
+        }
+    }
+    if (-not $created) {
+        Copy-Item -LiteralPath $src -Destination $dst -Recurse -Force
+    }
 }
 
 function Sync-AdapterSkills {
@@ -202,9 +237,11 @@ function Sync-AdapterSkills {
     $declared = @(@($Declared) | Where-Object { $_ } | Select-Object -Unique)
     New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
     $valid = @(Get-SkillNames)
-    foreach ($d in @(Get-ChildItem -LiteralPath $DestDir -Directory -ErrorAction SilentlyContinue)) {
+    $children = @(Get-ChildItem -LiteralPath $DestDir -Directory -ErrorAction SilentlyContinue)
+    foreach ($d in $children) {
+        if ($null -eq $d) { continue }
         if ($valid -contains $d.Name -and $declared -notcontains $d.Name) {
-            Remove-Item -LiteralPath $d.FullName -Recurse -Force
+            Remove-AdapterPath -Path $d.FullName
         }
     }
     foreach ($s in $declared) {
@@ -218,7 +255,7 @@ function Remove-AdapterSkills {
     foreach ($s in @($Declared)) {
         if ([string]::IsNullOrWhiteSpace($s)) { continue }
         $dst = Join-Path $DestDir $s
-        if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Recurse -Force }
+        if (Test-Path -LiteralPath $dst) { Remove-AdapterPath -Path $dst }
     }
     if (@(Get-ChildItem -LiteralPath $DestDir -Force -ErrorAction SilentlyContinue).Count -eq 0) {
         Remove-Item -LiteralPath $DestDir -Force -ErrorAction SilentlyContinue

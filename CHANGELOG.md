@@ -8,6 +8,12 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.3.1] - 2026-11-11
+
+### Cambiado
+- `AGENTS.md` §11: se aclara cuándo **no** reescribir la memoria (solo al cerrar la tarea autorizada o al cambiar mapa/estado/decisión vigente); evita reescrituras por turno sin información nueva.
+- `templates/session.md`: el bloque de pruebas se reduce a resultado final; no se vuelcan salidas ni logs.
+
 ## [0.3.0] - 2026-11-08
 
 ### Agregado

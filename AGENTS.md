@@ -103,6 +103,8 @@ Solo lo necesario para el pedido. Sin refactors, renombres, dependencias ni conf
 
 Al cerrar una tarea autorizada, registra en `DEVELOPMENT.md` solo las decisiones que sobrevivan a la sesión, con estado (`Aceptado`/`Propuesto`/`Pendiente`). Reemplaza lo caducado; no acumules un diario.
 
+**Cuándo no reescribir**: durante la tarea, no actualices `DEVELOPMENT.md` ni `.baseline/session.md` en cada turno. Actualiza solo al cerrar la tarea autorizada o cuando cambie el mapa, el estado operativo o una decisión vigente; reescrituras intermedias solo gastan contexto.
+
 **Presupuesto**: blando 4.500 caracteres, duro 6.000. Se mide con `(Get-Content DEVELOPMENT.md -Raw).Length`. Sobre el duro no se agrega nada sin recortar antes.
 
 **Auditoría** (detalle en la skill `memoria`, que se lee solo al auditar): al cerrar, si el archivo cambió y superó el blando; al iniciar sesión, si ya está sobre el duro (audita antes de agregar); y cuando lo pida el usuario. Cuesta una lectura y una escritura, y el reporte lleva la tabla antes/después.
