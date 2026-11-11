@@ -8,6 +8,20 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.3.2] - 2026-11-11
+
+### Corregido
+- `tools/install.ps1`: los adaptadores de descubrimiento se materializan como **enlaces** (junction en Windows, symlink en Unix) y no como copias. Antes `.agents/skills/` duplicaba los archivos de `.baseline/skills/` en disco.
+- `tools/install.ps1`: `Remove-AdapterPath` borra el enlace con `[System.IO.Directory]::Delete`, que quita el enlace incluso si su destino ya no existe y sin tocar el destino. Antes `Get-Item -Force` lanzaba excepción sobre un junction roto y dejaba el enlace huerfano.
+- `tools/install.ps1`: cada operación usa su propia carpeta de respaldo (`yyyyMMdd-HHmmss-fff`) y `Backup-File` numera el destino si ya existe. Dos operaciones en el mismo segundo anidaban `.baseline/.baseline` y perdian el respaldo previo.
+
+### Agregado
+- `tools/test.ps1`: tres casos nuevos (23 en total): el adaptador es un enlace y no una copia, `-Uninstall` con junction rota no deja enlaces huerfanos, y los respaldos no se anidan entre si.
+- `DEVELOPMENT.md`: seccion "Adaptadores de descubrimiento" con la matriz de donde lee cada cliente, y "Estado verificado" que sustituye la bitacora de validaciones.
+
+### Cambiado
+- `DEVELOPMENT.md`: poda de 16.979 a 11.512 caracteres (182 a 120 lineas). Se retiran las decisiones superadas, el detalle de plantillas que repetia el README, y la bitacora de sesion; se conservan las decisiones vigentes, el mapa, el contrato del instalador y los 13 pendientes.
+
 ## [0.3.1] - 2026-11-11
 
 ### Cambiado

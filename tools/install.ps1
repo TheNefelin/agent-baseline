@@ -174,12 +174,36 @@ function Ask-Choice {
     }
 }
 
+function New-BackupDir {
+    param([string]$Path)
+    $root = Join-Path $Path $BackupRoot
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+    $dir = Join-Path $root $stamp
+    $n = 2
+    while (Test-Path -LiteralPath $dir) {
+        $dir = Join-Path $root ("{0}-{1}" -f $stamp, $n)
+        $n++
+    }
+    return $dir
+}
+
 function Backup-File {
     param([string]$Path, [string]$BackupDir)
     if (-not (Test-Path -LiteralPath $Path)) { return }
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
     $item = Get-Item -LiteralPath $Path -Force
     $dest = Join-Path $BackupDir (Split-Path $Path -Leaf)
+    # Dos operaciones en el mismo segundo comparten la carpeta de respaldo: numerar el
+    # destino evita que Copy-Item anide (.baseline/.baseline) y pierda el respaldo previo.
+    if (Test-Path -LiteralPath $dest) {
+        $base = [System.IO.Path]::GetFileNameWithoutExtension($dest)
+        $ext = [System.IO.Path]::GetExtension($dest)
+        $n = 2
+        do {
+            $dest = Join-Path $BackupDir ("{0}-{1}{2}" -f $base, $n, $ext)
+            $n++
+        } while (Test-Path -LiteralPath $dest)
+    }
     if ($item.PSIsContainer) {
         Copy-Item -LiteralPath $Path -Destination $dest -Recurse -Force
     } else {
@@ -189,15 +213,10 @@ function Backup-File {
 
 function Remove-AdapterPath {
     param([string]$Path)
-    $item = $null
-    try { $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop } catch { $item = $null }
-    if ($null -eq $item) { return }
-    $isReparse = ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0
-    if ($isReparse) {
-        try { [System.IO.Directory]::Delete($Path) } catch { Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue }
-    } else {
-        Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
-    }
+    # Junction o symlink (incluso roto): Delete quita el enlace y no toca el destino.
+    try { [System.IO.Directory]::Delete($Path); return } catch {}
+    # Directorio real con contenido: se borra completo.
+    Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
 }
 function Sync-AdapterSkill {
     param([string]$Skill, [string]$SourceDir, [string]$DestDir)
@@ -255,7 +274,7 @@ function Remove-AdapterSkills {
     foreach ($s in @($Declared)) {
         if ([string]::IsNullOrWhiteSpace($s)) { continue }
         $dst = Join-Path $DestDir $s
-        if (Test-Path -LiteralPath $dst) { Remove-AdapterPath -Path $dst }
+        Remove-AdapterPath -Path $dst
     }
     if (@(Get-ChildItem -LiteralPath $DestDir -Force -ErrorAction SilentlyContinue).Count -eq 0) {
         Remove-Item -LiteralPath $DestDir -Force -ErrorAction SilentlyContinue
@@ -459,8 +478,7 @@ function Install-Project {
     Assert-Target -Value $Target
     $payload = Join-Path $Path $PayloadDir
     $manifestPath = Join-Path $Path $ManifestName
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $backupDir = Join-Path (Join-Path $Path $BackupRoot) $stamp
+    $backupDir = New-BackupDir -Path $Path
 
     if ((Test-Path -LiteralPath $payload) -and -not $Update -and -not $Force) {
         Fail "Ya hay una instalacion en $payload. Usa -Update para refrescar o -Uninstall para quitarla."
@@ -688,8 +706,7 @@ function Install-Project {
 
 function Install-Workspace {
     param([string]$Path)
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $backupDir = Join-Path (Join-Path $Path $BackupRoot) $stamp
+    $backupDir = New-BackupDir -Path $Path
     $agents = Join-Path $Path 'AGENTS.md'
     $dev = Join-Path $Path 'DEVELOPMENT.md'
 
@@ -735,7 +752,7 @@ function Remove-Project {
         return
     }
 
-    $backupDir = Join-Path (Join-Path $Path $BackupRoot) (Get-Date -Format 'yyyyMMdd-HHmmss')
+    $backupDir = New-BackupDir -Path $Path
     if (Test-Path -LiteralPath $payload) { Backup-File -Path $payload -BackupDir $backupDir }
     if (Test-Path -LiteralPath $payload) { Remove-Item -LiteralPath $payload -Recurse -Force }
     if (Test-Path -LiteralPath $manifestPath) { Remove-Item -LiteralPath $manifestPath -Force }

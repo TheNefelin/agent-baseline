@@ -270,6 +270,46 @@ try {
         if ($r.Output -notmatch 'install\.ps1') { throw "El mensaje no indica el comando de instalacion" }
         if ($r.Output -notmatch '\-Project') { throw "El mensaje no incluye -Project" }
     }
+
+    Test-Case "Los adaptadores enlazan la fuente: no son copias" {
+        $proj = Join-Path $temp 'p20'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
+        $src = Join-Path $proj '.baseline/skills/angular'
+        $adapter = Join-Path $proj '.agents/skills/angular'
+        if (-not (Test-Path -LiteralPath $adapter)) { throw "No se materializo el adaptador .agents/skills" }
+        $marker = Join-Path $src 'PRUEBA_ENLACE.txt'
+        [System.IO.File]::WriteAllText($marker, 'x', $Utf8)
+        try {
+            if (-not (Test-Path -LiteralPath (Join-Path $adapter 'PRUEBA_ENLACE.txt'))) {
+                throw "El adaptador es una copia, no un enlace a .baseline/skills"
+            }
+        } finally {
+            Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Test-Case "Uninstall con junction rota no deja enlaces huerfanos" {
+        $proj = Join-Path $temp 'p21'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
+        Remove-Item -LiteralPath (Join-Path $proj '.baseline/skills/angular') -Recurse -Force
+        & $Install -Project $proj -Uninstall -Force | Out-Null
+        $leftovers = @(Get-ChildItem -LiteralPath (Join-Path $proj '.agents/skills') -Force -ErrorAction SilentlyContinue)
+        if ($leftovers.Count -gt 0) { throw "Quedaron adaptadores huerfanos: $($leftovers.Name -join ', ')" }
+    }
+
+    Test-Case "Los respaldos no se anidan entre si" {
+        $proj = Join-Path $temp 'p22'
+        New-Item -ItemType Directory -Force -Path $proj | Out-Null
+        for ($i = 0; $i -lt 3; $i++) {
+            & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
+            & $Install -Project $proj -Uninstall -Force | Out-Null
+        }
+        $nested = @(Get-ChildItem -LiteralPath (Join-Path $proj '.baseline-backup') -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -eq '.baseline' -and $_.Parent.Name -eq '.baseline' })
+        if ($nested.Count -gt 0) { throw "Los respaldos se anidaron: $($nested.FullName -join ', ')" }
+    }
 } finally {
     try { Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue } catch {}
 }
