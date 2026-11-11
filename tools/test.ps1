@@ -271,21 +271,30 @@ try {
         if ($r.Output -notmatch '\-Project') { throw "El mensaje no incluye -Project" }
     }
 
-    Test-Case "Los adaptadores enlazan la fuente: no son copias" {
+    Test-Case "Los adaptadores exponen las skills instaladas" {
         $proj = Join-Path $temp 'p20'
         New-Item -ItemType Directory -Force -Path $proj | Out-Null
         & $Install -Project $proj -Skills angular -Target none -Force | Out-Null
         $src = Join-Path $proj '.baseline/skills/angular'
         $adapter = Join-Path $proj '.agents/skills/angular'
         if (-not (Test-Path -LiteralPath $adapter)) { throw "No se materializo el adaptador .agents/skills" }
-        $marker = Join-Path $src 'PRUEBA_ENLACE.txt'
-        [System.IO.File]::WriteAllText($marker, 'x', $Utf8)
-        try {
-            if (-not (Test-Path -LiteralPath (Join-Path $adapter 'PRUEBA_ENLACE.txt'))) {
-                throw "El adaptador es una copia, no un enlace a .baseline/skills"
+        if (-not (Test-Path -LiteralPath (Join-Path $adapter 'SKILL.md'))) { throw "El adaptador no expone SKILL.md" }
+        $a = (Get-FileHash -LiteralPath (Join-Path $src 'SKILL.md') -Algorithm SHA256).Hash
+        $b = (Get-FileHash -LiteralPath (Join-Path $adapter 'SKILL.md') -Algorithm SHA256).Hash
+        if ($a -ne $b) { throw "El adaptador no coincide con la fuente" }
+        # Si el adaptador es un enlace, un archivo nuevo en la fuente debe verse en el.
+        $item = Get-Item -LiteralPath $adapter -Force
+        $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+        if ($isLink) {
+            $marker = Join-Path $src 'PRUEBA_ENLACE.txt'
+            [System.IO.File]::WriteAllText($marker, 'x', $Utf8)
+            try {
+                if (-not (Test-Path -LiteralPath (Join-Path $adapter 'PRUEBA_ENLACE.txt'))) {
+                    throw "El adaptador declara ser enlace pero no propaga la fuente"
+                }
+            } finally {
+                Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
             }
-        } finally {
-            Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
         }
     }
 

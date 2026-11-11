@@ -12,11 +12,12 @@ Criterio de versión:
 
 ### Corregido
 - `tools/install.ps1`: los adaptadores de descubrimiento se materializan como **enlaces** (junction en Windows, symlink en Unix) y no como copias. Antes `.agents/skills/` duplicaba los archivos de `.baseline/skills/` en disco.
+- `tools/install.ps1`: cada intento de enlace se **verifica** (debe resolver y dejar leer `SKILL.md` a través de él). En Unix `New-Item -ItemType Junction` no falla pero no deja un enlace resoluble, y el instalador daba el adaptador por bueno: el fallo solo aparecía en CI de Linux. Ahora se reintenta con el otro tipo y, en último caso, se copia.
 - `tools/install.ps1`: `Remove-AdapterPath` borra el enlace con `[System.IO.Directory]::Delete`, que quita el enlace incluso si su destino ya no existe y sin tocar el destino. Antes `Get-Item -Force` lanzaba excepción sobre un junction roto y dejaba el enlace huerfano.
 - `tools/install.ps1`: cada operación usa su propia carpeta de respaldo (`yyyyMMdd-HHmmss-fff`) y `Backup-File` numera el destino si ya existe. Dos operaciones en el mismo segundo anidaban `.baseline/.baseline` y perdian el respaldo previo.
 
 ### Agregado
-- `tools/test.ps1`: tres casos nuevos (23 en total): el adaptador es un enlace y no una copia, `-Uninstall` con junction rota no deja enlaces huerfanos, y los respaldos no se anidan entre si.
+- `tools/test.ps1`: tres casos nuevos (23 en total): el adaptador expone las skills instaladas y propaga la fuente si es un enlace, `-Uninstall` con junction rota no deja enlaces huerfanos, y los respaldos no se anidan entre si.
 - `DEVELOPMENT.md`: seccion "Adaptadores de descubrimiento" con la matriz de donde lee cada cliente, y "Estado verificado" que sustituye la bitacora de validaciones.
 
 ### Cambiado

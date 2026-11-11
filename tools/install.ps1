@@ -61,6 +61,9 @@ $BackupRoot = '.baseline-backup'
 # Skills nucleares: las reglas (AGENTS.md seccion 11) las citan, asi que deben viajar siempre.
 $CoreSkills = @('memoria')
 $Utf8 = New-Object System.Text.UTF8Encoding($false)
+# Junction solo existe en Windows; en Unix el enlace es un symlink. $IsWindows no existe
+# en Windows PowerShell 5.1, asi que se detecta por entorno.
+$IsWindowsHost = ($env:OS -eq 'Windows_NT')
 
 function Fail { param([string]$Message) Write-Host $Message -ForegroundColor Red; exit 1 }
 function Write-Utf8 { param([string]$Path, [string]$Text) [System.IO.File]::WriteAllText($Path, $Text, $Utf8) }
@@ -211,44 +214,105 @@ function Backup-File {
     }
 }
 
+function Test-AdapterExists {
+    param([string]$Path)
+    # Test-Path da False en un enlace roto. Listar la carpeta padre si que lo ve.
+    $parent = Split-Path $Path -Parent
+    $leaf = Split-Path $Path -Leaf
+    if (-not (Test-Path -LiteralPath $parent)) { return $false }
+    $hit = @(Get-ChildItem -LiteralPath $parent -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq $leaf })
+    return ($hit.Count -gt 0)
+}
+
 function Remove-AdapterPath {
     param([string]$Path)
-    # Junction o symlink (incluso roto): Delete quita el enlace y no toca el destino.
-    try { [System.IO.Directory]::Delete($Path); return } catch {}
-    # Directorio real con contenido: se borra completo.
+    # Un enlace (junction o symlink) se borra como enlace: nunca se toca su destino.
+    $exists = Test-AdapterExists -Path $Path
+    if (-not $exists) { return $true }
+    $resolves = Test-Path -LiteralPath $Path
+    $isLink = $true
+    try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        $isLink = (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+    } catch {
+        $isLink = $true
+    }
+    if ($isLink) {
+        if ($resolves) {
+            # Enlace que resuelve: se borra el enlace, nunca el destino.
+            try { [System.IO.Directory]::Delete($Path); return $true } catch {}
+            try { Remove-Item -LiteralPath $Path -Force -ErrorAction Stop; return $true } catch {}
+        }
+        # Enlace roto: el destino no existe, asi que -Recurse no puede tocarlo.
+        try { Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop; return $true } catch {}
+        return $false
+    }
+    # Directorio real con contenido.
     Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+    return $true
+}
+
+function Test-AdapterLink {
+    param([string]$Path)
+    # Un enlace sirve solo si resuelve y deja leer el contenido a traves de el.
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    return (Test-Path -LiteralPath (Join-Path $Path 'SKILL.md'))
+}
+
+function Get-AdapterKind {
+    param([string]$Path)
+    try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            if ($IsWindowsHost) { return 'junction' }
+            return 'symlink'
+        }
+    } catch {}
+    return 'copy'
+}
+
+function Copy-AdapterDir {
+    param([string]$Src, [string]$Dst)
+    # Copia el contenido dentro de $Dst. Crear $Dst primero y copiar cada entrada evita
+    # que Copy-Item anide cuando el destino ya existe.
+    New-Item -ItemType Directory -Force -Path $Dst | Out-Null
+    foreach ($item in @(Get-ChildItem -LiteralPath $Src -Force -ErrorAction SilentlyContinue)) {
+        Copy-Item -LiteralPath $item.FullName -Destination $Dst -Recurse -Force
+    }
+}
+
+function New-AdapterLink {
+    param([string]$Src, [string]$Dst)
+    # Devuelve el tipo de enlace creado. Cada intento se VERIFICA: New-Item puede no
+    # lanzar error y aun asi no dejar un enlace resoluble (Junction se crea pero no
+    # resuelve en Unix). Si el enlace no sirve, se retira y se pasa al siguiente.
+    # La copia es el ultimo recurso y siempre funciona.
+    $srcResolved = (Resolve-Path -LiteralPath $Src).Path
+    $kinds = if ($IsWindowsHost) { @('Junction', 'SymbolicLink') } else { @('SymbolicLink', 'Junction') }
+    foreach ($kind in $kinds) {
+        if (Test-AdapterExists -Path $Dst) { Remove-AdapterPath -Path $Dst | Out-Null }
+        try {
+            New-Item -ItemType $kind -Path $Dst -Target $srcResolved -ErrorAction Stop | Out-Null
+        } catch {
+            Remove-AdapterPath -Path $Dst | Out-Null
+            continue
+        }
+        if (Test-AdapterLink -Path $Dst) { return (Get-AdapterKind -Path $Dst) }
+        Remove-AdapterPath -Path $Dst | Out-Null
+    }
+    if (Test-AdapterExists -Path $Dst) { Remove-AdapterPath -Path $Dst | Out-Null }
+    Copy-AdapterDir -Src $Src -Dst $Dst
+    return 'copy'
 }
 function Sync-AdapterSkill {
     param([string]$Skill, [string]$SourceDir, [string]$DestDir)
     $src = Join-Path $SourceDir $Skill
-    if (-not (Test-Path -LiteralPath $src)) { return }
+    if (-not (Test-Path -LiteralPath $src)) { return 'none' }
     New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
     $dst = Join-Path $DestDir $Skill
-    $existing = $null
-    try { $existing = Get-Item -LiteralPath $dst -Force -ErrorAction Stop } catch { $existing = $null }
-    if ($null -ne $existing) { Remove-AdapterPath -Path $dst }
-    # Junction (Windows) / symlink: una sola fuente fisica, sin duplicacion.
-    # Fallback a copia si el sistema de archivos no lo permite.
-    $created = $false
-    try {
-        $srcResolved = (Resolve-Path -LiteralPath $src).Path
-        New-Item -ItemType Junction -Path $dst -Target $srcResolved -ErrorAction Stop | Out-Null
-        $created = $true
-    } catch {
-        $created = $false
-    }
-    if (-not $created) {
-        try {
-            $srcResolved = (Resolve-Path -LiteralPath $src).Path
-            New-Item -ItemType SymbolicLink -Path $dst -Target $srcResolved -ErrorAction Stop | Out-Null
-            $created = $true
-        } catch {
-            $created = $false
-        }
-    }
-    if (-not $created) {
-        Copy-Item -LiteralPath $src -Destination $dst -Recurse -Force
-    }
+    if (Test-AdapterExists -Path $dst) { Remove-AdapterPath -Path $dst | Out-Null }
+    return (New-AdapterLink -Src $src -Dst $dst)
 }
 
 function Sync-AdapterSkills {
@@ -256,15 +320,22 @@ function Sync-AdapterSkills {
     $declared = @(@($Declared) | Where-Object { $_ } | Select-Object -Unique)
     New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
     $valid = @(Get-SkillNames)
-    $children = @(Get-ChildItem -LiteralPath $DestDir -Directory -ErrorAction SilentlyContinue)
+    $children = @(Get-ChildItem -LiteralPath $DestDir -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.PSIsContainer -or $_.LinkType })
     foreach ($d in $children) {
         if ($null -eq $d) { continue }
         if ($valid -contains $d.Name -and $declared -notcontains $d.Name) {
-            Remove-AdapterPath -Path $d.FullName
+            Remove-AdapterPath -Path $d.FullName | Out-Null
         }
     }
+    $kinds = @()
     foreach ($s in $declared) {
-        Sync-AdapterSkill -Skill $s -SourceDir $SourceDir -DestDir $DestDir
+        $k = Sync-AdapterSkill -Skill $s -SourceDir $SourceDir -DestDir $DestDir
+        if ($k -and $k -ne 'none') { $kinds += $k }
+    }
+    if ($kinds.Count -gt 0) {
+        $summary = (@($kinds | Select-Object -Unique) -join '/')
+        Write-Host ("  adaptador: {0} ({1} skill(s), {2})" -f $DestDir, $declared.Count, $summary)
     }
 }
 
