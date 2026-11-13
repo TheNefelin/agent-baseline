@@ -4,7 +4,7 @@
 
 Reglas de operación (`AGENTS.md`) más un catálogo de skills reutilizables para agentes de código. Cada skill es un cuerpo corto que se carga siempre y un conjunto de referencias que se leen solo cuando hacen falta.
 
-**17 skills** y **49 casos** de eval de enrutamiento.
+**18 skills** y **51 casos** de eval de enrutamiento.
 
 ## Mapa del proyecto
 
@@ -98,7 +98,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 ## Estado verificado
 
 - `tools/verify.ps1` en verde: check, budget, memory, sync y 23/23 casos del instalador.
-- 17 skills con `name` = carpeta, 49/49 casos de eval, 0 referencias rotas, 0 huérfanas, 0 solapamientos sobre 0,5, todas ≤300 líneas.
+- 18 skills con `name` = carpeta, 51/51 casos de eval, 0 referencias rotas, 0 huérfanas, 0 solapamientos sobre 0,5, todas ≤300 líneas.
 - Ciclo completo en un proyecto temporal con `.git`: `install` → `-Update` → `-Doctor` → `-Uninstall`, sin errores; solo quedan `.git`, `.baseline-backup/` y `.gitignore`.
 - Los adaptadores son enlaces verificados: un archivo nuevo en `.baseline/skills/` aparece en `.agents/skills/`.
 - **Sin verificar**: la carga real de `opencode.json`, de los punteros y de los adaptadores por sus clientes (no hay ninguno instalado en esta máquina); tampoco se probó `-Workspace` en un workspace real ni la ejecución nativa en Linux/macOS.

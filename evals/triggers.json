@@ -52,5 +52,8 @@
   { "id": "none-neg-02b", "tipo": "negativo", "prompt": "explicame que es un closure en javascript", "expect": null, "nota": "pregunta conceptual, sin stack del catalogo" },
   { "id": "none-neg-03", "tipo": "negativo", "prompt": "escribir un poema corto sobre el oceano", "expect": null, "nota": "no debe activar ninguna skill" },
   { "id": "none-neg-04", "tipo": "negativo", "prompt": "explicar la teoria de la relatividad a un nino", "expect": null, "nota": "conocimiento general, fuera de alcance" },
-  { "id": "none-neg-05", "tipo": "negativo", "prompt": "disenar el esquematico y el layout del pcb de la placa en kicad", "expect": null, "nota": "hardware (esquematico/pcb), fuera de alcance: esta skill es firmware" }
+  { "id": "none-neg-05", "tipo": "negativo", "prompt": "disenar el esquematico y el layout del pcb de la placa en kicad", "expect": null, "nota": "hardware (esquematico/pcb), fuera de alcance: esta skill es firmware" },
+
+  { "id": "podcast-video-pos-01", "tipo": "positivo", "prompt": "extraer shorts de un video de podcast y generar subtitulos para tiktok", "expect": "podcast-video" },
+  { "id": "podcast-video-neg-01", "tipo": "negativo", "prompt": "disenar el mockup visual de una landing page", "expect": "ui-ux-mockup", "nota": "diseno visual, no edicion de video" }
 ]

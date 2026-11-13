@@ -21,6 +21,15 @@ Criterio de versión:
 - `fastapi/references/auth.md`: generaliza la regla de `API_KEY` para no asumir `pydantic-settings` (vale también para una `Settings` propia con `_required()`).
 - `memoria/SKILL.md`: "Mide y estima el largo antes de escribir" en el Procedimiento (evita la segunda pasada cuando el archivo está cerca del tope duro).
 
+## [0.4.0] - 2026-11-13
+
+### Agregado
+- Skill `podcast-video`: edicion de video para podcast y extraccion de shorts. Flujo en DaVinci Resolve (Free), comandos FFmpeg, specs por plataforma (TikTok/Reels/Shorts) y manejo de footage de iPhone. 3 referencias bajo demanda: `davinci-flujo.md`, `ffmpeg-cortes.md`, `formatos-redes.md`. 2 casos de eval (positivo y negativo).
+- `evals/triggers.json`: 51 casos (49 + 2 nuevos).
+
+### Cambiado
+- `DEVELOPMENT.md` y `README.md`: inventario actualizado a 18 skills y 51 casos.
+
 ## [0.3.2] - 2026-11-11
 
 ### Corregido
