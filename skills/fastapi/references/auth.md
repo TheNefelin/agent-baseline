@@ -154,7 +154,7 @@ require_user = get_current_user()
 
 - **Comparación en tiempo constante**: `if not x_api_key or not secrets.compare_digest(x_api_key, settings.API_KEY): raise InvalidApiKeyError()` (evita timing attacks y convierte la ausencia de cabecera en 401, no en 500).
 - **Cabecera opcional en la firma**: `x_api_key: str | None = Header(None, alias="X-API-Key")`; el guardia anterior decide el fallo (401 `invalid-api-key`), no la validación de FastAPI (422, que además expone el nombre del header en el schema público).
-- **`API_KEY` es requerida**: `API_KEY: str` en `Settings`, sin default — Pydantic falla al arrancar si falta; un default vacío permitiría que una clave vacía pasara.
+- **`API_KEY` es requerida**: la variable no puede tener default (Pydantic: `API_KEY: str` sin default; implementación propia: un `_required("API_KEY")` que falle al arrancar). Un default vacío permitiría que una clave vacía pasara.
 - **Rutas públicas por diseño**: `/health`, `/docs`, `/openapi.json` quedan fuera del router de auth. Si se necesitan endpoints públicos dentro de `/auth` (ej. login), se sacan a un sub-router separado.
 - **Logging de seguridad**: `logger.warning("API Key inválida recibida")` en cada intento fallido.
 

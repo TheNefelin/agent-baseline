@@ -134,6 +134,18 @@ src/server/
 - `config.ts` es puro: solo lee `process.env` + `required()`.
 - El prefijo `/ssr-api` viene de `environment.apiUrl` (fuente única, no hardcodeado).
 
+### [SSR] — Sesión en cookie HttpOnly (BFF)
+
+Cuando el BFF es dueño de la sesión (tokens en cookies `HttpOnly`), el cliente **no puede** leer ni guardar tokens. Consecuencias:
+
+- **No hay `authInterceptor`**: el BFF pone el `Authorization: Bearer` leyendo la cookie `access_token`. El cliente solo envía las cookies (mismo origen).
+- **CSRF por doble envío**: el BFF emite una cookie legible `csrf_token`; el cliente la copia a la cabecera `X-CSRF-Token` en peticiones mutantes. El BFF compara ambas.
+- **Guard asíncrono**: como el cliente no sabe si hay sesión, el guard protege la ruta preguntando `/auth/me` (y redirige a login si falla). No vale una comprobación de "presencia" sin red.
+- **Respuesta de login sin tokens**: el BFF extrae `access_token`/`refresh_token` de la respuesta del backend, los guarda en cookies y devuelve al cliente solo los datos de negocio.
+- **Refresh silencioso en el proxy**: ante un 401, el BFF llama a `/auth/refresh` con la cookie `refresh_token`, emite las cookies nuevas y reintenta la petición original; si falla, borra la sesión.
+
+El `AuthStoreService` del cliente queda reducido a un flag booleano (solo para reaccionar en la UI); la fuente de verdad es el servidor (`/auth/me`).
+
 ### allowedHosts (Angular 22)
 
 Angular 22 valida el header `Host` y responde 400 a los no declarados. Configurar en `angular.json`:

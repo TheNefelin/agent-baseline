@@ -65,6 +65,7 @@ Antes de tocar un área, lee su memoria: el mapa de `DEVELOPMENT.md` (área → 
 - Si la memoria contradice el código, señálalo; no asumas que está al día ni la reemplaces con una lectura completa.
 - **Workspace multi-proyecto**: la raíz no es un proyecto. Si abres el agente en la raíz y la tarea pertenece a `frontend/`, lee primero `frontend/AGENTS.md` y `frontend/DEVELOPMENT.md`; el stack del subproyecto manda sobre el de la raíz. `install`, `build` y `test` se ejecutan dentro de cada proyecto, nunca en la raíz.
 - No crees `SKILL.md` por iniciativa propia: propón y espera.
+- **No edites `.baseline/skills/` en sitio**: el manifiesto (`.baseline.json`) hashea cada archivo; una edición local rompe `-Doctor` y el próximo `-Update` la pisa. El cambio va al catálogo y se reinstala.
 
 ## 7. Flujo
 

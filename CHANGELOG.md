@@ -8,6 +8,19 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.4.0] - 2026-11-13
+
+### Agregado
+- `AGENTS.md`: regla explícita de que `.baseline/skills/` no se edita en sitio (el manifiesto hashea cada archivo; la edición local rompe `-Doctor` y la pierde el próximo `-Update`).
+- `fastapi/references/tests.md`: sección "Mocks y binding de imports" (importar la función rompe `patch("modulo.fn")`; la forma correcta es `from . import modulo` + `modulo.fn()`), y gotcha de `pytest -q` + `addopts = -q` → `-qq` oculta la línea "N passed".
+- `fastapi/references/modelos.md`: "Una sola Base declarativa" y "Consolidar a un único `models.py` sin tocar los call sites" (fachada `__init__.py` que reexporta).
+- `angular/references/auth.md`: subsección "[SSR] — Sesión en cookie HttpOnly (BFF)": guard asíncrono contra `/auth/me`, CSRF por doble envío, refresh silencioso en el proxy, respuesta de login sin tokens, `AuthStoreService` reducido a flag booleano.
+
+### Cambiado
+- `fastapi/SKILL.md` §4.2: clarificación de la frontera de transacción (preferible una transacción por request con `flush()` en el repository y `commit()`/`rollback()` en `get_db()`; commit por método de repository deja datos parciales).
+- `fastapi/references/auth.md`: generaliza la regla de `API_KEY` para no asumir `pydantic-settings` (vale también para una `Settings` propia con `_required()`).
+- `memoria/SKILL.md`: "Mide y estima el largo antes de escribir" en el Procedimiento (evita la segunda pasada cuando el archivo está cerca del tope duro).
+
 ## [0.3.2] - 2026-11-11
 
 ### Corregido
