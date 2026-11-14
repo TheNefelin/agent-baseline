@@ -142,10 +142,10 @@ router = APIRouter(
 )
 ```
 
-`dependencies.py` queda como fachada para que los imports existentes sigan funcionando:
+`dependencies.py` queda como fachada **opcional** para que los imports existentes sigan funcionando. Si tu proyecto no la tiene, las dependencias viven en `security.py` (ambas son válidas):
 
 ```python
-# src/core/dependencies.py
+# src/core/dependencies.py (opcional)
 from src.core.security import get_current_user, verify_api_key
 
 require_admin = get_current_user(required_roles=["admin"])
@@ -155,6 +155,7 @@ require_user = get_current_user()
 - **Comparación en tiempo constante**: `if not x_api_key or not secrets.compare_digest(x_api_key, settings.API_KEY): raise InvalidApiKeyError()` (evita timing attacks y convierte la ausencia de cabecera en 401, no en 500).
 - **Cabecera opcional en la firma**: `x_api_key: str | None = Header(None, alias="X-API-Key")`; el guardia anterior decide el fallo (401 `invalid-api-key`), no la validación de FastAPI (422, que además expone el nombre del header en el schema público).
 - **`API_KEY` es requerida**: la variable no puede tener default (Pydantic: `API_KEY: str` sin default; implementación propia: un `_required("API_KEY")` que falle al arrancar). Un default vacío permitiría que una clave vacía pasara.
+- **Gotcha de config**: la capa de configuración puede ser `pydantic-settings` o una clase propia con `python-dotenv` + `_required()`. Ambas son válidas; lo importante es que las variables requeridas **fallen al arrancar** si faltan (nunca valores hardcodeados ni secretos ficticios). El proyecto decide cuál usar.
 - **Rutas públicas por diseño**: `/health`, `/docs`, `/openapi.json` quedan fuera del router de auth. Si se necesitan endpoints públicos dentro de `/auth` (ej. login), se sacan a un sub-router separado.
 - **Logging de seguridad**: `logger.warning("API Key inválida recibida")` en cada intento fallido.
 

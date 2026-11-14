@@ -221,7 +221,7 @@ con `Content-Type: application/problem+json`. El código de las excepciones (`sr
 
 ## 9. Configuración y logging
 
-Config con **pydantic-settings**: todo lo externo es **opcional** (el proyecto decide qué integra); las variables `TEST_*` son `None` por defecto y solo las leen las pruebas. Las requeridas (`DATABASE_URL`, `SECRET_KEY`, `API_KEY`, `CORS_ORIGINS`) van sin default y fallan al arrancar si faltan.
+Config con **pydantic-settings** (recomendado) o con **python-dotenv + clase propia** (ambas válidas; el proyecto decide). Todo lo externo es **opcional** (el proyecto decide qué integra); las variables `TEST_*` son `None` por defecto y solo las leen las pruebas. Las requeridas (`DATABASE_URL`, `SECRET_KEY`, `API_KEY`, `CORS_ORIGINS`) van sin default y fallan al arrancar si faltan. Si usas python-dotenv, implementa un `_required(name)` que lance `RuntimeError` cuando falte.
 
 - `src/core/config.py`: `Settings(BaseSettings)` + `@property cors_origins_list` (parsea `CORS_ORIGINS` como JSON).
 - `src/core/database.py`: `create_async_engine(..., pool_pre_ping=True)`, `async_sessionmaker`, `get_db()` que hace `yield`.

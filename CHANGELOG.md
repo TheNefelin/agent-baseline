@@ -8,6 +8,17 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.4.1] - 2026-11-14
+
+### Agregado
+- `fastapi/references/auth.md`: clarificación de que `core/dependencies.py` es fachada **opcional** (ambas variantes válidas: facade o deps en `security.py`); gotcha de config (python-dotenv vs pydantic-settings, ambas válidas).
+- `fastapi/SKILL.md` §9: mención de python-dotenv como alternativa válida a pydantic-settings.
+- `angular/references/ssr.md`: gotcha de `pnpm-workspace.yaml` (pnpm 10+ con `allowBuilds` placeholder rompe `pnpm install` en Vercel); `allowedHosts` fail-closed (sin fallback inseguro, usar `NG_ALLOWED_HOSTS`).
+- `angular/references/auth.md`: gotcha del prefijo `/api` doble (la URL del frontend debe cuadrar con la del backend + el prefijo del BFF).
+
+### Cambiado
+- `fastapi/references/auth.md`: sección de `dependencies.py` como fachada ahora dice "opcional".
+
 ## [0.4.0] - 2026-11-13
 
 ### Agregado
@@ -20,6 +31,17 @@ Criterio de versión:
 - `fastapi/SKILL.md` §4.2: clarificación de la frontera de transacción (preferible una transacción por request con `flush()` en el repository y `commit()`/`rollback()` en `get_db()`; commit por método de repository deja datos parciales).
 - `fastapi/references/auth.md`: generaliza la regla de `API_KEY` para no asumir `pydantic-settings` (vale también para una `Settings` propia con `_required()`).
 - `memoria/SKILL.md`: "Mide y estima el largo antes de escribir" en el Procedimiento (evita la segunda pasada cuando el archivo está cerca del tope duro).
+
+## [0.4.1] - 2026-11-14
+
+### Agregado
+- `fastapi/references/auth.md`: clarificación de que `core/dependencies.py` es fachada **opcional** (ambas variantes válidas: facade o deps en `security.py`); gotcha de config (python-dotenv vs pydantic-settings, ambas válidas).
+- `fastapi/SKILL.md` §9: mención de python-dotenv como alternativa válida a pydantic-settings.
+- `angular/references/ssr.md`: gotcha de `pnpm-workspace.yaml` (pnpm 10+ con `allowBuilds` placeholder rompe `pnpm install` en Vercel); `allowedHosts` fail-closed (sin fallback inseguro, usar `NG_ALLOWED_HOSTS`).
+- `angular/references/auth.md`: gotcha del prefijo `/api` doble (la URL del frontend debe cuadrar con la del backend + el prefijo del BFF).
+
+### Cambiado
+- `fastapi/references/auth.md`: sección de `dependencies.py` como fachada ahora dice "opcional".
 
 ## [0.4.0] - 2026-11-13
 

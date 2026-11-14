@@ -133,6 +133,7 @@ src/server/
 - `env.ts` se importa **primero** en `server.ts` (deja `process.env` listo).
 - `config.ts` es puro: solo lee `process.env` + `required()`.
 - El prefijo `/ssr-api` viene de `environment.apiUrl` (fuente única, no hardcodeado).
+- **Gotcha del prefijo `/api`**: si el backend monta las rutas bajo `/api` (ej. `app.include_router(auth_router, prefix="/api")`) Y el frontend construye la URL como `/ssr-api/api/auth/...`, el BFF duplica el prefijo (`/api/api/auth/...` → 404). La URL del frontend debe cuadrar con la del backend + el prefijo del BFF: `frontend path (sin /ssr-api) + API_URL = URL del backend`. Verificar con un curl directo al backend antes de desplegar.
 
 ### [SSR] — Sesión en cookie HttpOnly (BFF)
 
