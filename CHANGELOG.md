@@ -8,29 +8,69 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
-## [0.4.1] - 2026-11-14
+## [0.5.0] - 2026-11-18
 
 ### Agregado
-- `fastapi/references/auth.md`: clarificación de que `core/dependencies.py` es fachada **opcional** (ambas variantes válidas: facade o deps en `security.py`); gotcha de config (python-dotenv vs pydantic-settings, ambas válidas).
-- `fastapi/SKILL.md` §9: mención de python-dotenv como alternativa válida a pydantic-settings.
-- `angular/references/ssr.md`: gotcha de `pnpm-workspace.yaml` (pnpm 10+ con `allowBuilds` placeholder rompe `pnpm install` en Vercel); `allowedHosts` fail-closed (sin fallback inseguro, usar `NG_ALLOWED_HOSTS`).
-- `angular/references/auth.md`: gotcha del prefijo `/api` doble (la URL del frontend debe cuadrar con la del backend + el prefijo del BFF).
+- `angular/SKILL.md` §6: guard asíncrono de roles separado del guard de sesión (con cookie `HttpOnly` el rol no está disponible de forma síncrona).
+- `angular/SKILL.md` §10: Vitest como runner por defecto desde Angular 21+ (`@angular/build:unit-test`, `tsconfig.spec.json` con `types: ["vitest/globals"]`, Karma deprecado).
+- `angular/SKILL.md` §10: zoneless por defecto en Angular 22 (sin `zone.js`, `ZONELESS_ENABLED` resuelve `true`); `provideZonelessChangeDetection()` opcional.
+- `angular/references/auth.md`: 14 patrones nuevos validados en producción (BFF modular por responsabilidad, proxy partido por dominio, contrato de error JSON uniforme, mapeo de errores HTTP→mensaje, guard CSRF condicional, no reenviar `X-CSRF-Token`, `Secure` condicionado al host, config lazy con `Proxy`, guard async contra `/auth/me`, logout fire-and-forget, SDK con timeout y reseteo, CSP con post-proceso, tests del BFF con Vitest puro, logger con contexto).
+- `fastapi/SKILL.md` §5: variante sin `relationship` en modo async (resuelve con `select` explícitos, evita `MissingGreenlet`).
+- `fastapi/references/modelos.md`: el ORM mapea exactamente las FKs y tipos del DDL; variante sin `relationship`; `Column(...)` como anotación.
+- `fastapi/references/auth.md`: identidad federada en tabla puente, prohibición de merge automático por email (account takeover), `id_token` vs `access_token`, degradación suave en `userinfo`, guard de seeds, `get_user_id` con dos formas de `require_user`.
+- `fastapi/references/configuracion-logging.md`: variante `python-dotenv` + clase propia, CORS fail-closed, `expire_on_commit=False` y `get_db()` con commit/rollback.
+- `fastapi/references/tests.md`: aislamiento no destructivo (DDL real + rollback por test), desactivar rate limit, test de contrato de la API Key.
+- `dotnet/references/microsoft-skills.md`: referencia a las skills oficiales de Microsoft (`github.com/dotnet/skills`) con guía de uso "tal cual" y tabla de plugins.
+
+### Corregido
+- `angular/SKILL.md` §6: el patrón por defecto de SSR pasa a **BFF + cookie `HttpOnly`**; `sessionStorage` queda como variante legacy (multi-tenant).
+- `angular/references/auth.md`: el interceptor CSRF de ejemplo ahora lleva **guarda de plataforma** (`isPlatformBrowser`): `app.config.ts` se hereda al servidor y `document.cookie` en SSR lanza `ReferenceError` en cuanto una ruta con request pasa a `RenderMode.Server`.
+- `angular/references/auth.md`: la regla del 401 pasa de absoluta a condicional: se silencia solo cuando significa "sesión muerta" (hay sesión activa o la petición es a `/auth/me`); un 401 sin sesión (credenciales inválidas) **sí** se muestra, porque en BFF no hay refresh en el cliente.
+- `angular/references/auth.md`: `allowedHosts` se documenta **solo** por `NG_ALLOWED_HOSTS` + `AngularNodeAppEngine`, fail-closed **por arranque**. La variante en `angular.json` que aparecía aquí no habilitaba nada y contradecía a `references/ssr.md`.
+- `angular/references/auth.md`: `env.ts` documenta las dos variantes de precedencia (entorno del sistema vs `.env` del proyecto) y `config.ts` el patrón lazy con `Proxy`, para que el build SSR no falle sin variables.
+- `angular/SKILL.md` §7: la regla de feedback pasa de "las páginas nunca llaman `error.show()`" a "no duplicar": los errores **no HTTP** (SDK, popup OAuth) los muestra la página.
+- `angular/SKILL.md` §10 y §13: `provideZonelessChangeDetection()` es opcional en Angular 22 (zoneless por defecto si no se instala `zone.js`), Vitest es el runner por defecto desde 21+, el check de `pnpm lint` es condicional, el de `subscribe()` admite fire-and-forget y `modal-confirm` solo aplica si hay borrados.
+- `angular/references/auth.md`: `allowedHosts` y CSP quedan alineados con `references/ssr.md` (fuente única, sin contradicción entre referencias).
+- `fastapi/SKILL.md` §4.3 y checklist: `commit()` solo en `get_db()` (una transacción por request); antes §4.3 pedía `commit()` en el repository, lo que contradecía a §4.2.
+- `fastapi/SKILL.md` §4.2: regla explícita para `core/` (puede leer el ORM del usuario; los services de `api/` no) y excepción consciente para catálogos sin routes.
+- `fastapi/SKILL.md` §11: el anti-patrón del proveedor externo ya no exige `raise_for_status()` (contradecía a sus propias referencias); ahora exige **comprobar el status** y decidir entre error de negocio o degradación suave.
+- `fastapi/references/errores-rfc9457.md`: el duplicado que viola UNIQUE devuelve `ConflictError` (409), no `DuplicateNameError` (400); se agregan `ConflictError` y `BadRequestError` a la plantilla.
+- `fastapi/references/auth.md`: `get_user_id` documenta las dos formas de `require_user` (payload con `sub` vs perfil con `id`); el token puede llevar o no el `role` (es redundante si el rol siempre se lee de la BD).
+- `fastapi/references/tests.md`: se agrega el modo de aislamiento **no destructivo** (DDL real idempotente + rollback por test), que no borra nada y sirve también para BD compartida.
+- `CHANGELOG.md`: entradas 0.4.0 y 0.4.1 duplicadas (habían quedado dos bloques de cada una); se conserva una de cada.
 
 ### Cambiado
-- `fastapi/references/auth.md`: sección de `dependencies.py` como fachada ahora dice "opcional".
+- `angular/SKILL.md` y `fastapi/SKILL.md`: marker de frescura revalidado (Angular 22.2.4–22.2.5 / FastAPI 0.162.7, SQLAlchemy 2.1.8, Pydantic 2.14.3, httpx 0.28.1, pytest 9.2.0, Python 3.14) contra un proyecto real con la suite en verde.
+- `dotnet/SKILL.md`: referencia a las skills oficiales de Microsoft (`github.com/dotnet/skills`).
 
-## [0.4.0] - 2026-11-13
+## [0.4.2] - 2026-11-14
+
+### Corregido
+- `angular/SKILL.md` §6: el patrón por defecto de SSR pasa a ser **BFF + cookie `HttpOnly`**; `sessionStorage` queda como variante legacy (multi-tenant). Antes la sección que se lee siempre describía el patrón con más riesgo.
+- `angular/references/auth.md`: el interceptor CSRF de ejemplo ahora lleva **guarda de plataforma** (`isPlatformBrowser`): `app.config.ts` se hereda al servidor y `document.cookie` en SSR lanza `ReferenceError` en cuanto una ruta con request pasa a `RenderMode.Server`.
+- `angular/references/auth.md`: la regla del 401 pasa de absoluta a condicional: se silencia solo cuando significa "sesión muerta" (hay sesión activa o la petición es a `/auth/me`); un 401 sin sesión (credenciales inválidas) **sí** se muestra, porque en BFF no hay refresh en el cliente.
+- `angular/references/ssr.md`: `allowedHosts` y CSP quedan alineados con `references/auth.md` (fuente única, sin contradicción entre referencias).
+- `angular/references/auth.md`: `env.ts` documenta las dos variantes de precedencia (entorno del sistema vs `.env` del proyecto) y `config.ts` el patrón lazy con `Proxy`, para que el build SSR no falle sin variables.
+- `angular/SKILL.md` §7: la regla de feedback pasa de "las páginas nunca llaman `error.show()`" a "no duplicar": los errores **no HTTP** (SDK, popup OAuth) los muestra la página.
+- `angular/SKILL.md` §10 y §13: `provideZonelessChangeDetection()` es opcional en Angular 22 (zoneless por defecto si no se instala `zone.js`), Vitest es el runner por defecto desde 21+, el check de `pnpm lint` es condicional, el de `subscribe()` admite fire-and-forget y `modal-confirm` solo aplica si hay borrados.
+- `fastapi/SKILL.md` §4.3 y checklist: `commit()` solo en `get_db()` (una transacción por request); antes §4.3 pedía `commit()` en el repository, lo que contradecía a §4.2.
+- `fastapi/SKILL.md` §4.2: regla explícita para `core/` (puede leer el ORM del usuario; los services de `api/` no) y excepción consciente para catálogos sin routes.
+- `fastapi/SKILL.md` §11: el anti-patrón del proveedor externo ya no exige `raise_for_status()` (contradecía a sus propias referencias); ahora exige **comprobar el status** y decidir entre error de negocio o degradación suave.
+- `fastapi/references/errores-rfc9457.md`: el duplicado que viola UNIQUE devuelve `ConflictError` (409), no `DuplicateNameError` (400); se agregan `ConflictError` y `BadRequestError` a la plantilla.
+- `fastapi/references/auth.md`: `get_user_id` documenta las dos formas de `require_user` (payload con `sub` vs perfil con `id`); el token puede llevar o no el `role` (es redundante si el rol siempre se lee de la BD).
+- `fastapi/references/tests.md`: se agrega el modo de aislamiento **no destructivo** (DDL real idempotente + rollback por test), que no borra nada y sirve también para BD compartida.
+- `CHANGELOG.md`: entradas 0.4.0 y 0.4.1 duplicadas (habían quedado dos bloques de cada una); se conserva una de cada.
 
 ### Agregado
-- `AGENTS.md`: regla explícita de que `.baseline/skills/` no se edita en sitio (el manifiesto hashea cada archivo; la edición local rompe `-Doctor` y la pierde el próximo `-Update`).
-- `fastapi/references/tests.md`: sección "Mocks y binding de imports" (importar la función rompe `patch("modulo.fn")`; la forma correcta es `from . import modulo` + `modulo.fn()`), y gotcha de `pytest -q` + `addopts = -q` → `-qq` oculta la línea "N passed".
-- `fastapi/references/modelos.md`: "Una sola Base declarativa" y "Consolidar a un único `models.py` sin tocar los call sites" (fachada `__init__.py` que reexporta).
-- `angular/references/auth.md`: subsección "[SSR] — Sesión en cookie HttpOnly (BFF)": guard asíncrono contra `/auth/me`, CSRF por doble envío, refresh silencioso en el proxy, respuesta de login sin tokens, `AuthStoreService` reducido a flag booleano.
+- `angular/references/auth.md`: BFF modular (`http/`, `middleware/`, `proxy/`, `services/`), proxy partido por dominio, contrato de error JSON uniforme, `Secure` condicionado al host, guard async de roles, logout fire-and-forget, SDK con timeout y reseteo, CSP con post-proceso (eliminar `content-length`/`etag`), tests del servidor con Vitest puro, CSRF condicional en el BFF y no reenviar `X-CSRF-Token` al upstream.
+- `fastapi/references/auth.md`: identidad federada en tabla puente, prohibición de merge automático por email (account takeover), `id_token` vs `access_token`, degradación suave en `userinfo`, guard de seeds.
+- `fastapi/references/modelos.md`: el ORM mapea exactamente el DDL, variante sin `relationship` en async, `Column(...)` como anotación.
+- `fastapi/references/configuracion-logging.md`: variante `python-dotenv` + clase propia, CORS fail-closed, `expire_on_commit=False` y `get_db()` con commit/rollback.
+- `fastapi/references/tests.md`: desactivar el rate limit en tests y test de contrato de la API Key.
+- `fastapi/references/rate-limiting.md`: los headers `X-RateLimit-*` son opcionales.
 
 ### Cambiado
-- `fastapi/SKILL.md` §4.2: clarificación de la frontera de transacción (preferible una transacción por request con `flush()` en el repository y `commit()`/`rollback()` en `get_db()`; commit por método de repository deja datos parciales).
-- `fastapi/references/auth.md`: generaliza la regla de `API_KEY` para no asumir `pydantic-settings` (vale también para una `Settings` propia con `_required()`).
-- `memoria/SKILL.md`: "Mide y estima el largo antes de escribir" en el Procedimiento (evita la segunda pasada cuando el archivo está cerca del tope duro).
+- `angular/SKILL.md` y `fastapi/SKILL.md`: marker de frescura revalidado (Angular 22.2.4–22.2.5 / FastAPI 0.162.7, SQLAlchemy 2.1.8, Pydantic 2.14.3, httpx 0.28.1, pytest 9.2.0, Python 3.14) contra un proyecto real con la suite en verde.
 
 ## [0.4.1] - 2026-11-14
 
@@ -48,9 +88,16 @@ Criterio de versión:
 ### Agregado
 - Skill `podcast-video`: edicion de video para podcast y extraccion de shorts. Flujo en DaVinci Resolve (Free), comandos FFmpeg, specs por plataforma (TikTok/Reels/Shorts) y manejo de footage de iPhone. 3 referencias bajo demanda: `davinci-flujo.md`, `ffmpeg-cortes.md`, `formatos-redes.md`. 2 casos de eval (positivo y negativo).
 - `evals/triggers.json`: 51 casos (49 + 2 nuevos).
+- `AGENTS.md`: regla explícita de que `.baseline/skills/` no se edita en sitio (el manifiesto hashea cada archivo; la edición local rompe `-Doctor` y la pierde el próximo `-Update`).
+- `fastapi/references/tests.md`: sección "Mocks y binding de imports" (importar la función rompe `patch("modulo.fn")`; la forma correcta es `from . import modulo` + `modulo.fn()`), y gotcha de `pytest -q` + `addopts = -q` → `-qq` oculta la línea "N passed".
+- `fastapi/references/modelos.md`: "Una sola Base declarativa" y "Consolidar a un único `models.py` sin tocar los call sites" (fachada `__init__.py` que reexporta).
+- `angular/references/auth.md`: subsección "[SSR] — Sesión en cookie HttpOnly (BFF)": guard asíncrono contra `/auth/me`, CSRF por doble envío, refresh silencioso en el proxy, respuesta de login sin tokens, `AuthStoreService` reducido a flag booleano.
 
 ### Cambiado
 - `DEVELOPMENT.md` y `README.md`: inventario actualizado a 18 skills y 51 casos.
+- `fastapi/SKILL.md` §4.2: clarificación de la frontera de transacción (preferible una transacción por request con `flush()` en el repository y `commit()`/`rollback()` en `get_db()`; commit por método de repository deja datos parciales).
+- `fastapi/references/auth.md`: generaliza la regla de `API_KEY` para no asumir `pydantic-settings` (vale también para una `Settings` propia con `_required()`).
+- `memoria/SKILL.md`: "Mide y estima el largo antes de escribir" en el Procedimiento (evita la segunda pasada cuando el archivo está cerca del tope duro).
 
 ## [0.3.2] - 2026-11-11
 

@@ -46,6 +46,7 @@ Solo lo que sigue vigente. Lo replaced no se conserva: el historial está en `CH
 | 2026-11-08 | Aceptado | Los punteros de Cline y Kilo se generan en código, sin plantilla por cliente | Una plantilla duplicaba el texto y derivaba; `templates/targets/` queda solo para `opencode.json` |
 | 2026-11-08 | Aceptado | 0.3.0: adaptadores de descubrimiento **materializados y enlazados** (junction en Windows, symlink en Unix) desde `.baseline/skills` a `.agents/skills` y `.clinerules/skills`; `-Doctor` separa salud de preparación; prohibiciones críticas inline en los punteros | El descubrimiento nativo fuera de openCode fallaba. La fuente única se mantiene en git y el adaptador es local, gitignored y sin duplicar datos |
 | 2026-11-08 | Aceptado | `-Doctor` sale 1 si falta el puntero, el target o una skill instalada; la versión atrasada queda como aviso | Un verde estructural no debe ocultar una instalación incoherente |
+| 2026-11-14 | Aceptado | 0.4.2: `angular` y `fastapi` revalidadas contra un proyecto real; el patrón por defecto de SSR pasa a BFF + cookie `HttpOnly`, el interceptor CSRF lleva guarda de plataforma, el `commit()` vive solo en `get_db()` y el duplicado que viola UNIQUE devuelve 409 | La skill debe describir lo que un proyecto en producción hace, no lo que el ejemplo sugiere: tres reglas propagaban bugs latentes |
 | 2026-11-11 | Aceptado | Los respaldos van en carpeta única por operación y se numeran si el destino ya existe; los enlaces rotos se borran sin tocar su destino | Dos operaciones en el mismo segundo anidaban `.baseline/.baseline` y un junction con destino ausente quedaba huérfano |
 
 ## Instalador
@@ -101,6 +102,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 - 18 skills con `name` = carpeta, 51/51 casos de eval, 0 referencias rotas, 0 huérfanas, 0 solapamientos sobre 0,5, todas ≤300 líneas.
 - Ciclo completo en un proyecto temporal con `.git`: `install` → `-Update` → `-Doctor` → `-Uninstall`, sin errores; solo quedan `.git`, `.baseline-backup/` y `.gitignore`.
 - Los adaptadores son enlaces verificados: un archivo nuevo en `.baseline/skills/` aparece en `.agents/skills/`.
+- `angular` y `fastapi` revalidadas contra un proyecto real en producción (Angular 22.2.4 / FastAPI 0.162.7): 14 contradicciones corregidas, 3 de ellas bugs latentes que la skill propagaba (interceptor CSRF sin guarda de plataforma, regla absoluta del 401, `commit()` en el repository).
+- `angular/SKILL.md` §6: el patrón por defecto de SSR pasa a **BFF + cookie `HttpOnly`**; `sessionStorage` queda como variante legacy.
+- `dotnet/SKILL.md`: referencia a las skills oficiales de Microsoft (`github.com/dotnet/skills`) en `references/microsoft-skills.md`.
 - **Sin verificar**: la carga real de `opencode.json`, de los punteros y de los adaptadores por sus clientes (no hay ninguno instalado en esta máquina); tampoco se probó `-Workspace` en un workspace real ni la ejecución nativa en Linux/macOS.
 
 ## Pendientes
@@ -117,4 +121,4 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 10. **`-Update` en un workspace**: un workspace no tiene manifiesto, así que `-Update` falla con el mensaje de instalación. Decidir si necesita su propio manifiesto o un refresco de plantillas.
 11. El instalador no comprueba que la plantilla que copia exista: si falta `templates/targets/opencode.json`, la fusión se omite en silencio. Validarla antes de escribir.
 12. Verificar que cada skill citada en `AGENTS.md` exista en `skills/`; hoy una cita a una skill retirada no rompe `check.ps1`.
-13. Unificar la fuente de proxy, CSP y `allowedHosts`: `angular/references/ssr.md` y `auth.md` se solapan y pueden derivar.
+13. ~~Unificar la fuente de proxy, CSP y `allowedHosts`~~: resuelto en 0.5.0 — `ssr.md` y `auth.md` alineados con `auth.md` como fuente única.

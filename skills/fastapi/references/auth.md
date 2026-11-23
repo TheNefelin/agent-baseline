@@ -156,7 +156,7 @@ require_user = get_current_user()
 - **Cabecera opcional en la firma**: `x_api_key: str | None = Header(None, alias="X-API-Key")`; el guardia anterior decide el fallo (401 `invalid-api-key`), no la validación de FastAPI (422, que además expone el nombre del header en el schema público).
 - **`API_KEY` es requerida**: la variable no puede tener default (Pydantic: `API_KEY: str` sin default; implementación propia: un `_required("API_KEY")` que falle al arrancar). Un default vacío permitiría que una clave vacía pasara.
 - **Gotcha de config**: la capa de configuración puede ser `pydantic-settings` o una clase propia con `python-dotenv` + `_required()`. Ambas son válidas; lo importante es que las variables requeridas **fallen al arrancar** si faltan (nunca valores hardcodeados ni secretos ficticios). El proyecto decide cuál usar.
-- **Rutas públicas por diseño**: `/health`, `/docs`, `/openapi.json` quedan fuera del router de auth. Si se necesitan endpoints públicos dentro de `/auth` (ej. login), se sacan a un sub-router separado.
+- **Rutas públicas por diseño**: `/health`, `/docs`, `/openapi.json` quedan fuera del router de auth. Si la API se consume **solo desde un BFF** (el navegador nunca habla con la API), login/register/refresh pueden exigir la API Key como el resto: es la opción más simple y deja una sola superficie protegida. Usa un sub-router separado solo cuando existan clientes sin API Key (apps móviles, integraciones de terceros).
 - **Logging de seguridad**: `logger.warning("API Key inválida recibida")` en cada intento fallido.
 
 ### 8.2.1 Logging de eventos de seguridad
@@ -206,11 +206,20 @@ async def verify_google_token(access_token: str) -> schemas.GoogleUserInfo:
   email_verified = token_info.get("email_verified")
   if email_verified not in (True, "true"):
     raise UnauthorizedError(message="Email not verified")
-
   # /tokeninfo con un access token no garantiza name/picture: si faltan, se
   # consulta /userinfo (misma validez: el token ya fue validado por aud).
   return schemas.GoogleUserInfo(google_id=token_info["sub"], email=token_info["email"], ...)
 ```
+
+**Dos credenciales, dos parámetros**: si el proveedor acepta un `id_token` (JWT) y un `access_token` (opaco), detéctalos por formato (un JWT tiene 2 puntos) y usa un parámetro distinto en cada caso. Valida `iss` **solo en el JWT**: el endpoint `tokeninfo` no devuelve `iss` para un access token opaco y rechazarías logins válidos.
+
+**Separa la llamada que DECIDE el acceso de la que solo ENRIQUECE el perfil**: la validación del token falla duro (401); el `userinfo` es degradación suave — si falla, devuelve `None` y el login sigue con los valores por defecto. Esa segunda llamada nunca debe hacer fallar el login.
+
+**Identidad federada en tabla puente**: `user_identities (provider_id, provider_user_id, user_id, is_primary)` en vez de una columna `google_sub` en `users`. Permite N proveedores por usuario (local + google + github), deja la FK del proveedor en datos y no en config, y hace trivial el unlink futuro. La identidad primaria es `(provider_id, provider_user_id)`, única en BD.
+
+**Nunca enlazar automáticamente una cuenta federada con una local por coincidencia de email**: si el email ya existe, responde 409 y exige un flujo explícito de vinculación (`/auth/connect`) con reautenticación. Un merge por email es un *account takeover*: el atacante registra el email de la víctima con Google y lo reclama.
+
+**Guard de seeds**: si falta un catálogo (rol, estado, proveedor), lanza `RuntimeError` con el nombre de la tabla y el valor esperado, no un 500 genérico. Es un fallo de despliegue, no de petición: debe verse en el arranque o en el log, no escondido en el `detail` de una respuesta.
 
 ```python
 # service.py — orquesta el flujo completo
@@ -219,7 +228,7 @@ async def auth_service(db: AsyncSession, google_token: str) -> schemas.AuthGoogl
 
   user = await users_service.get_or_create_user(db, info.email, info.google_id)
 
-  token = security.create_access_token(user.id, user.role.name)
+  token = security.create_access_token(user.id)
   refresh_token = secrets.token_urlsafe(32)
   expires_at = datetime.now(tz=timezone.utc) + timedelta(days=REFRESH_TOKEN_DAYS)
   # Guardar SOLO el hash: si la BD se filtra, los refresh tokens no son usables.
@@ -227,6 +236,8 @@ async def auth_service(db: AsyncSession, google_token: str) -> schemas.AuthGoogl
 
   return schemas.AuthGoogleResponse(token=token, refresh_token=refresh_token, user=...)
 ```
+
+> **El token puede llevar o no el `role`**. Como el rol se lee siempre de la BD (§8.1), incluirlo en el JWT es redundante: el token lleva `sub`, `exp` e `iat`. Si lo incluyes, trátalo como *pista*, nunca como autoridad. `create_access_token` puede aceptar `expires_delta` para emitir tokens de corta duración en tests.
 
 ```python
 # users/service.py — get_or_create_user (identidad primaria por google_sub)
@@ -242,6 +253,8 @@ async def get_or_create_user(db: AsyncSession, email: str, google_id: str) -> dt
     entity = await repository.create(db, {"email": email, "role_id": role.id, "google_sub": google_id})
   return dtos.UserResponse.model_validate(entity)
 ```
+
+> Si el provider devuelve una identidad federada (tabla `user_identities`), la query vive en el **repository** (`get_by_provider_user`), nunca en el service: el service sigue sin tocar entidades.
 
 ```python
 # refresh rotation: el refresh viejo se revoca y se emite uno nuevo
@@ -282,7 +295,7 @@ async def refresh_session(db, refresh_token):
 
 ### 8.4 Endpoints de usuario autenticado
 
-El `user_id` **nunca viene del body**: se extrae del token.
+El `user_id` **nunca viene del body**: se extrae del token o del perfil que resuelve la dependencia.
 
 ```python
 # src/api/user_favorites/routes.py (ejemplo transversal de feature "del usuario")
@@ -294,17 +307,14 @@ from src.core.dependencies import verify_api_key, require_user
 router = APIRouter(prefix="/user-favorites", tags=["user-favorites"], dependencies=[Depends(verify_api_key)])
 
 
-def get_user_id(payload: dict = Depends(require_user)) -> UUID:
-  return UUID(payload["sub"])
-
-
-@router.post("/", response_model=dtos.UserFavoriteResponse, status_code=201)
-async def add_to_favorites(data: dtos.UserFavoriteRequest, user_id: UUID = Depends(get_user_id), db=Depends(get_db)):
-  return await service.create(db, user_id, data.product_id)
+def get_user_id(user: dict = Depends(require_user)) -> UUID:
+  return UUID(user["sub"])
 ```
+
+**Dos formas de `require_user`, elige una y no las mezcles**: si devuelve el **payload del token**, existe `sub`; si devuelve el **perfil del usuario** (`id`, `email`, `role`, `status`), el feature usa `user["id"]`. Con la segunda, `get_user_id` es `UUID(user["id"])`.
 
 **Regla de dependencia**: la dependency `get_user_id` es del feature (rutas del feature), **no** de `core/dependencies.py` — la reutilización del feature evita que `core/` se acople a dominios.
 
 Patrón `upsert` en el repository (no falla por PK duplicada): si la fila existe se actualiza, si no se crea.
 
-**Features `roles`**: catálogo de roles sin routes (solo `repository.py` + `service.py`). Lo consumen `users` y `security` (resolución de rol por nombre y de nombre de rol del usuario). El `"role"` default se resuelve por **nombre** (`service.get_by_name(db, "user")`), nunca con ID en duro.
+**Features `roles`**: catálogo de roles (solo `repository.py` + `service.py`; `routes.py` solo si el catálogo se administra desde la API). Lo consumen `users` y `security` (resolución de rol por nombre y de nombre de rol del usuario). El `"role"` default se resuelve por **nombre** (`service.get_by_name(db, "user")`), nunca con ID en duro.

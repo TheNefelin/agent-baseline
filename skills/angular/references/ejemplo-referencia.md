@@ -34,7 +34,7 @@ Convención dominante: `<form>` sin evento de submit y botón `type="button"` co
 - Login con Google OAuth por namespace; el BFF expone el mapa de client IDs en `/ssr-api/config`.
 - Sesión en `sessionStorage` con prefijo `auth.{namespace}.access_token/refresh_token/user`.
 - El interceptor extrae el namespace de la URL, añade el Bearer y hace refresh+retry en 401.
-- Deuda asumida y documentada: tokens en storage (riesgo XSS) a la espera de migrar a cookie `HttpOnly` en el BFF.
+- Tokens en storage (riesgo XSS) resueltos: el proyecto de referencia migró a BFF + cookie `HttpOnly` + CSRF de doble envío (ver `references/auth.md` §"Auth con BFF"). El patrón legacy con `sessionStorage` por namespace sigue documentado como variante.
 
 ## Cifras de referencia
 

@@ -27,6 +27,7 @@ Además, el `errorInterceptor` **no debe mostrar toast en 401**: un 401 que lleg
 
 - En el 401: el `authInterceptor` pide `/auth/refresh`, guarda el nuevo par y **reintenta** la petición original; si el refresh falla → limpia sesión + redirige al login.
 - **Nunca** reintentar refresh sobre `/auth/refresh` ni `/auth/logout` (evita bucles).
+- En el patrón BFF no hay refresh en el cliente: el 401 de "credenciales inválidas" en `/auth/login` **debe** mostrarse. Silencia el 401 solo cuando significa "sesión muerta" (hay sesión activa, o la petición es a `/auth/me`).
 
 ## [CSR/SSR] — SDKs de terceros dentro del servicio, no en `index.html`
 
@@ -62,8 +63,8 @@ export class AuthGoogleService {
 }
 ```
 
-- `??=` garantiza **una sola** carga aunque haya llamadas concurrentes; el `.catch` resetea para permitir reintento.
-- Guarda `isPlatformBrowser()` para SSR; timeout explícito si se desea.
+- Además de `??=`: si el SDK ya está en `window`, resuelve al instante (no reinserta el script).
+- Envuelve la carga en un **timeout explícito** y resetea el promise cacheado en el `catch` para permitir reintento tras un fallo transitorio de red o CSP.
 - Encapsula el ciclo de vida del SDK en **un solo lugar** (el servicio), sin acoplar `index.html`.
 
 ## [SSR] — Auth con BFF + HttpOnly + CSRF (patrón senior, recomendado para producción)
@@ -88,7 +89,7 @@ Navegador ──cookie HttpOnly──> /ssr-api (BFF/Express) ──X-API-Key + 
 - En endpoints de token (`/auth/login`, `/register`, `/google`, `/refresh`): extrae los tokens del JSON, los guarda en cookies HttpOnly y devuelve el body **sin tokens**.
 - En 401: intenta refrescar con `refresh_token` cookie y reintenta una vez.
 - En `/auth/logout`: borra las cookies.
-- Filtra cabeceras hop-by-hop (`host`, `connection`, `content-length`, `transfer-encoding`, `content-encoding`, `set-cookie`, `cookie`).
+- Filtra cabeceras hop-by-hop (`host`, `connection`, `content-length`, `transfer-encoding`, `content-encoding`, `set-cookie`, `cookie`) y también `x-csrf-token` (ver "No reenviar `X-CSRF-Token` al upstream").
 
 ### CSRF (doble envío)
 
@@ -97,10 +98,56 @@ Navegador ──cookie HttpOnly──> /ssr-api (BFF/Express) ──X-API-Key + 
 - El BFF compara: cookie == header. Si no coinciden → 403.
 - `SameSite=Lax` bloquea el 95% de CSRF; el doble envío cierra el 5% restante.
 
+### Escrituras con firstValueFrom + try/catch/finally
+
+Alternativa al `MutationService` cuando hay pocas escrituras: la página hace `await firstValueFrom(servicio.x())` dentro de `try/catch/finally`, con su signal `loading`:
+
+```ts
+async guardar(): Promise<void> {
+  this.isSaving.set(true);
+  try {
+    await firstValueFrom(this.authService.login(this.formData()));
+    this.router.navigate(['/home']);
+  } catch (err) {
+    if (!(err instanceof HttpErrorResponse)) {
+      this.errorService.show(this.describeError(err));
+    }
+    // HTTP: el interceptor ya mostro el toast
+  } finally {
+    this.isSaving.set(false);
+  }
+}
+```
+
+- El `finally` siempre restaura `loading`/`disabled`; sin él, el botón queda bloqueado.
+- En `catch`, distingue HTTP de no HTTP: el interceptor ya mostró los HTTP.
+- Para muchos writes (CRUD con modal), prefiere el `MutationService` con `onClose`/`onSuccess`.
+
+### Logger con contexto
+
+Servicio de log centralizado en `core/services` con método `error(context, message, error?)`:
+
+```ts
+@Injectable({ providedIn: 'root' })
+export class LoggerService {
+  error(context: string, message: string, error?: unknown): void {
+    console.error(`[${context}] ${message}`, error);
+  }
+}
+```
+
+- Uso: `logger.error('MiComponente', 'accion', err)` → `[MiComponente] accion`.
+- Evita `console.error` disperso con formatos distintos y permite filtrar por componente en el log.
+
 ### Interceptor CSRF (frontend)
+
+El interceptor corre **también en SSR**: `app.config.ts` se hereda al servidor con `mergeApplicationConfig`, así que `document` no existe en Node y el acceso directo a `document.cookie` lanza `ReferenceError`.
 
 ```ts
 export const csrfInterceptor: HttpInterceptorFn = (req, next) => {
+  // El interceptor tambien corre en SSR (app.config.ts se hereda al servidor).
+  if (!isPlatformBrowser(inject(PLATFORM_ID))) return next(req);
+
   const isMutating = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method.toUpperCase());
   const isApiRequest = req.url.startsWith('/ssr-api');
   if (isMutating && isApiRequest) {
@@ -113,26 +160,59 @@ export const csrfInterceptor: HttpInterceptorFn = (req, next) => {
 };
 ```
 
+- **Guarda de plataforma obligatoria**: `isPlatformBrowser(PLATFORM_ID)` y salida temprana. Sin ella, el error aparece cuando una ruta con request pasa a `RenderMode.Server`.
+- En servidor el token CSRF no aplica: el BFF compara cookie vs header y en el render no hay cookie jar.
+
+### CSRF condicional en el BFF
+
+El BFF exige `X-CSRF-Token` **solo si la petición trae la cookie `csrf_token`**. Sin cookie (login, registro, primer contacto) la petición pasa: si no, el primer POST devolvería 403 y ningún flujo podría arrancar.
+
+Complemento del lado cliente: el interceptor solo añade la cabecera si encuentra la cookie.
+
+### No reenviar `X-CSRF-Token` al upstream
+
+Al hacer forwarding, filtrar también `x-csrf-token`: el CSRF del BFF se deriva de la cookie, nunca de la cabecera que envió el cliente. Reenviarla hacia la API le entrega un token que el BFF no controla.
+
 ### CSP con nonces (producción)
 
 - El `<meta>` CSP del `index.html` es permisivo (dev). En producción, el servidor Express envía una **cabecera HTTP** restrictiva con un nonce por request.
-- El nonce se inyecta en los scripts inline del HTML (post-proceso) para que pasen la política.
-- `Cache-Control: no-store` evita que el navegador cachee HTML con nonce viejo.
+- El nonce se inyecta en los scripts inline del HTML (post-proceso) para que pasen la política. El post-proceso reescribe solo `<script>` **sin `src=`** y reemplaza también el `nonce=""` que Angular deja en el build.
+- Al reenviar el body editado, elimina `content-length` y `etag` (ya no cuadran) y manda `Cache-Control: no-store` para que no se cachee HTML con nonce viejo.
 - `script-src` sin `unsafe-inline`/`unsafe-eval`; `style-src` mantiene `unsafe-inline` (Tailwind/DaisyUI).
 
 ### Configuración del servidor (src/server/)
 
 ```
 src/server/
-├── env.ts          → carga .env (process.loadEnvFile), solo si el proceso no trae config
-├── config.ts       → lee/valida process.env (API_URL, API_KEY); sin I/O ni efectos
-└── proxy/
-    └── api-proxy.ts → proxy + cookies + CSRF + refresh-on-401
+├── env.ts          → carga .env (importar PRIMERO en server.ts)
+├── config.ts       → lee process.env (lazy, sin I/O)
+├── http/           → cookies.ts, proxy-headers.ts (utilidades puras)
+├── middleware/     → csp.ts, csrf.ts, json-error.ts, allowed-hosts.ts
+├── proxy/          → auth-proxy.ts, api-proxy.ts
+└── services/       → session.service.ts (emite/refresca cookies)
 ```
 
-- `env.ts` se importa **primero** en `server.ts` (deja `process.env` listo).
-- `config.ts` es puro: solo lee `process.env` + `required()`.
+- Cada carpeta tiene **una** responsabilidad. `http/` y `services/` son funciones puras, testeables sin Express.
+- `env.ts` se importa **primero** en `server.ts` (deja `process.env` listo). Hay dos variantes y hay que elegir una: (a) `process.loadEnvFile()` si **el entorno del sistema manda**; (b) parseo manual + `process.env[k]=v` si el `.env` del proyecto **manda** (evita que una variable stale del sistema oculte la config). No las mezcles.
+- `config.ts` **no lee `process.env` al importar**: el build SSR extrae rutas y falla si las variables no están. Usa un `Proxy` lazy que evalúa `required()` en cada acceso, y `required()` **no lanzante** (devuelve `''`); la validación real ocurre en el request y responde 500 con "Falta configurar API_URL y API_KEY".
 - El prefijo `/ssr-api` viene de `environment.apiUrl` (fuente única, no hardcodeado).
+
+### Proxy partido por dominio
+
+Dos routers, no uno: `auth-proxy` (montado en `/ssr-api/auth`) y `api-proxy` (catch-all en `/ssr-api`). Express usa el primero que matchea: `auth-proxy` se traga login/register/google/refresh/logout/me; `api-proxy` solo reenvía CRUD genérico. Cada router aplica `csrfGuard` + `jsonErrorHandler`.
+
+Ventaja: extraer tokens y emitir cookies nunca se mezcla con el forwarding CRUD.
+
+### Cookies `Secure` condicionadas al host
+
+`Secure` solo si `PRODUCTION=true` **y** el host no es `localhost`/`127.0.0.1`. En dev HTTP las cookies `Secure` no se envían y la sesión se pierde sola. No uses `Secure` incondicional: rompe el login local.
+
+### Contrato de error JSON del BFF
+
+Todo error generado por el BFF responde el mismo cuerpo `{ type, title, status, detail }`:
+`400 malformed-json` | `403 csrf-failed` | `502 upstream-unavailable`.
+
+El cliente parsea `detail`; nunca llega HTML de error de Express. Aplica también al 502 por upstream caído y al 400 por JSON malformado.
 - **Gotcha del prefijo `/api`**: si el backend monta las rutas bajo `/api` (ej. `app.include_router(auth_router, prefix="/api")`) Y el frontend construye la URL como `/ssr-api/api/auth/...`, el BFF duplica el prefijo (`/api/api/auth/...` → 404). La URL del frontend debe cuadrar con la del backend + el prefijo del BFF: `frontend path (sin /ssr-api) + API_URL = URL del backend`. Verificar con un curl directo al backend antes de desplegar.
 
 ### [SSR] — Sesión en cookie HttpOnly (BFF)
@@ -145,15 +225,23 @@ Cuando el BFF es dueño de la sesión (tokens en cookies `HttpOnly`), el cliente
 - **Respuesta de login sin tokens**: el BFF extrae `access_token`/`refresh_token` de la respuesta del backend, los guarda en cookies y devuelve al cliente solo los datos de negocio.
 - **Refresh silencioso en el proxy**: ante un 401, el BFF llama a `/auth/refresh` con la cookie `refresh_token`, emite las cookies nuevas y reintenta la petición original; si falla, borra la sesión.
 
-El `AuthStoreService` del cliente queda reducido a un flag booleano (solo para reaccionar en la UI); la fuente de verdad es el servidor (`/auth/me`).
+- `AuthStoreService` del cliente queda reducido a un flag booleano (solo para reaccionar en la UI); la fuente de verdad es el servidor (`/auth/me`).
+- **Guard async**: `authGuard` pregunta `/auth/me`: 200 → `setSession()` y `true`; error → `clearSession()` y `UrlTree` a login. El `errorInterceptor` silencia el 401 de `/auth/me` para no mostrar dos mensajes (el guard ya redirige).
+- **Roles en un guard aparte**: con cookie `HttpOnly` el rol no está disponible de forma síncrona en el cliente. El guard de sesión responde "¿hay sesión?"; un guard async separado responde "¿el rol permite esta ruta?". El `role` lo trae `/auth/me` (o un claim), nunca lo inventes.
+- **Logout fire-and-forget**: dispara la revocación en el servidor sin await (`pipe(take(1)).subscribe({ error: () => undefined })`), limpia la sesión local y navega. El usuario no espera al backend para desloguearse.
 
 ### allowedHosts (Angular 22)
 
-Angular 22 valida el header `Host` y responde 400 a los no declarados. Configurar en `angular.json`:
-```json
-"security": { "allowedHosts": ["localhost", "tu-dominio.com"] }
+Angular 22 valida el header `Host`. La lista real va en el motor, no en `angular.json`:
+
+```ts
+new AngularNodeAppEngine({ allowedHosts: getAllowedHosts() });
 ```
-O vía env: `NG_ALLOWED_HOSTS=localhost,tu-dominio.com`.
+
+- `angular.json` genera `"security": { "allowedHosts": [] }`: **no declares hosts ahí**, se ignoran.
+- Lee la lista de `NG_ALLOWED_HOSTS` (comma-separated) en `src/server/middleware/allowed-hosts.ts`.
+- **Fail-closed por arranque**: `getAllowedHosts()` lanza si `NG_ALLOWED_HOSTS` no está definido (o está vacío) y el servidor no levanta. Más simple y seguro que responder 400 a cada host no declarado.
+- En local: `NG_ALLOWED_HOSTS=localhost,127.0.0.1` en `.env`.
 
 ## [SSR] — Auth multi-tenant (por namespace)
 

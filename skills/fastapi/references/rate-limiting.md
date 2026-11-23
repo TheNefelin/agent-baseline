@@ -40,5 +40,5 @@ async def health():
 ```
 
 - Default global `100/minute`; `@limiter.limit("10/minute")` en auth; `@limiter.limit("5/minute")` en endpoints de formularios públicos (p. ej. `POST /contact`).
-- El handler de `RateLimitExceeded` está integrado en el manejo de errores RFC 9457 (sección 7.2) y conserva los headers `X-RateLimit-*`.
-- En los tests, `limiter.reset()` en un fixture autouse evita que el límite se acumule entre tests.
+- El handler de `RateLimitExceeded` está integrado en el manejo de errores RFC 9457 (sección 7.2). Los headers `X-RateLimit-*` son **opcionales** (recomendados para que el cliente muestre "reintenta en X"); su ausencia no rompe el contrato RFC 9457.
+- En los tests, `limiter.enabled = False` a nivel de módulo (no solo `limiter.reset()`): el límite por IP comparte cuota entre tests y produce 429 espurios. Reactívalo solo en un test dedicado que verifique el 429.

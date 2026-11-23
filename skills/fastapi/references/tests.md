@@ -3,10 +3,11 @@
 Principios:
 - **BD real PostgreSQL dedicada** (`TEST_DATABASE_URL`), no SQLite: los tests prueban lo mismo que prod (tipos, FKs, asyncpg). **Una BD de tests por proyecto, aislada; nunca la compartida.**
 - **Aislamiento, no detección**: el fixture **resetea el esquema** de esa BD dedicada (`DROP SCHEMA public CASCADE; CREATE SCHEMA public`) al inicio. Al vivir en una BD propia, el DDL destructivo no puede alcanzar datos ni constraints de otros proyectos. No corras los tests contra un conjunto de tablas dentro de una base compartida: `CASCADE` arrastra los constraints de las tablas ajenas que dependan de las tuyas.
-- **Guard de destino (barrera temprana, no la garantía)**: `conftest.py` aborta antes de tocar nada si `TEST_DATABASE_URL` no termina en `_test`, es `postgres`, o su **destino** (host resuelto a IP, puerto, nombre) coincide con `DATABASE_URL`. Es *best-effort* (alias/DNS/proxies pueden eludirlo): la **garantía real** son credenciales **sin permisos de DDL/DROP sobre producción** + la BD dedicada.
+- **Guard de destino (barrera temprana, no la garantía)**: `conftest.py` aborta antes de tocar nada si `TEST_DATABASE_URL` no termina en `_test`, es `postgres`, o su **destino** (host resuelto a IP, puerto, nombre) coincide con `DATABASE_URL`. Es *best-effort* (alias/DNS/proxies pueden eludirlo): la **garantía real** son credenciales **sin permisos de DDL/DROP sobre producción** + la BD dedicada. Este guard es **obligatorio en los dos modos** de aislamiento de abajo.
 - `conftest.py` centraliza: engine, sesión, override de `get_db` y `verify_api_key`, y siembra los datos mínimos (roles y un usuario admin).
 - Un test = 1 caso (éxito + cada error). Fórmula por recurso: create ✓, duplicate ✗, list empty, list, filter, get_by_id, get_by_id 404, update, update 404, update duplicate, delete, delete 404, pagination.
 - **Tests live aislados**: los que tocan servicios externos reales (enviar email a Brevo, cobrar, subir a Cloudinary) van en archivos `test_*_live.py` marcados `@pytest.mark.live` y **excluidos por defecto** (`addopts = -m "not live"` en `pytest.ini`). Solo corren a demanda con `pytest -m live`. Esto evita que la suite común dispare llamadas pagadas/irreversibles. Condicional extra si requieren credencial: `@pytest.mark.skipif(not settings.TEST_BREVO_EMAIL)`.
+- **Si el proyecto no tiene tests live**, `addopts = -q` es válido: no copies el `-m "not live"` ni la sección `[markers]`. Ojo: `addopts = -q` + `pytest -q` = `-qq` (se pierde la línea "N passed").
 
 ```ini
 # pytest.ini
@@ -33,6 +34,26 @@ async def test_send_contact_email_live():
   message_id = await brevo.send_contact_email(to=settings.TEST_BREVO_EMAIL, ...)
   assert message_id
 ```
+
+### Dos modos de aislamiento
+
+**Modo A (DDL no destructivo, el más seguro)**: el fixture aplica el **DDL real** del proyecto (`schema.sql`, idempotente: `CREATE TABLE IF NOT EXISTS` + seeds con `ON CONFLICT`) y **cada test corre dentro de una transacción que se revierte** al final (`join_transaction_mode="create_savepoint"`). No hay `DROP SCHEMA` ni `TRUNCATE`: nada se borra, así que el patrón sirve también para una BD compartida. El DDL aplicado en tests es el mismo de producción, no `create_all`.
+
+```python
+@pytest_asyncio.fixture
+async def db_session(test_engine):
+    connection = await test_engine.connect()
+    transaction = await connection.begin()
+    session = AsyncSession(bind=connection, join_transaction_mode="create_savepoint")
+    try:
+        yield session
+    finally:
+        await session.close()
+        await transaction.rollback()
+        await connection.close()
+```
+
+**Modo B (create_all + DROP SCHEMA)**: resetea el esquema al inicio (`DROP SCHEMA public CASCADE; CREATE SCHEMA public`). Exige la BD dedicada y el guard completo de destino.
 
 ### `tests/conftest.py`
 
@@ -191,3 +212,11 @@ Misma trampa con `patch("src.core.security.hash_refresh_token")` si el repositor
 ### Gotcha de `pytest -q`
 
 `pytest.ini` del proyecto suele traer `addopts = -m "not live"` (o `-q`). Pasar `-q` otra vez lo convierte en `-qq` y **oculta la línea final "N passed"**, que es la que se reporta. Corre `python -m pytest` a secas para verla.
+
+### Desactivar el rate limit en tests
+
+`limiter.enabled = False` a nivel de módulo (no solo `limiter.reset()`): el límite por IP comparte cuota entre tests y produce 429 espurios. Reactiva el limiter solo en un test dedicado que verifique el 429.
+
+### Test de contrato de la API Key
+
+Parametriza **todas** las rutas del router y asserta 401 con `type == "invalid-api-key"`. Envía un body **válido** a propósito: con un body vacío el 422 de validación enmascara el fallo de la API Key (falso positivo real).

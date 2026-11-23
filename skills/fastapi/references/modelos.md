@@ -57,3 +57,32 @@ from .models import User, UserRole, UserStatus, AuthProvider, UserIdentity, User
 ```
 
 Los call sites (`from src.models import User`) **no cambian**, y la fachada importa todos los modelos, lo que los registra en `Base.metadata`. Sin la fachada, `from src.models import User` deja de funcionar y hay que tocar cada archivo.
+
+### El ORM mapea exactamente el DDL
+
+Las FKs y los tipos del modelo deben coincidir con el DDL: `users.id` es `UUID`, así que `Mapped[UUID]`, no `Mapped[int]`. Un `Mapped[int]` sobre una columna UUID no falla al escribir: falla al leer, en runtime, lejos de la causa.
+
+Si el DDL es la fuente de verdad (lo normal: el esquema se migra a mano y el ORM se escribe encima), el ORM se revisa contra él. Comprueba los tipos UUID, los `NUMERIC`/enteros de dinero y los `TIMESTAMPTZ` uno por uno.
+
+### Variante sin `relationship` (async)
+
+En modo async, declarar `relationship` habilita lazy loading, que lanza `MissingGreenlet` si se accede a la relación fuera de un `await` explícito. La alternativa es no declarar relaciones y resolverlas con `select` explícitos en el repository:
+
+```python
+# repository.py: la relación se resuelve con un query propio, sin lazy load
+result = await db.execute(
+    select(User).options(selectinload(User.products))
+)
+```
+
+Ventajas: hace visible el N+1 y elimina la clase de errores `MissingGreenlet`. Si ya usas `selectinload`/`joinedload` para las relaciones eager, entonces sí conviene declarar la `relationship` (con `back_populates` simétricos).
+
+### `Column(...)` como anotación
+
+La API clásica es válida si se usa como anotación de `Mapped[...]`:
+
+```python
+id: Mapped[int] = Column(Integer, primary_key=True)
+```
+
+Es el mismo resultado que `mapped_column`; no mezclar ambos estilos en el mismo archivo.

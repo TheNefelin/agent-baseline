@@ -25,15 +25,16 @@ Guía para construir y revisar aplicaciones Angular **signal-based** con criteri
 
 **Piso: Angular 21. Probado: 22.x.** Todo lo que sigue asume ese piso; no se escribe código compatible con versiones anteriores.
 
-> **Frescura:** verificado 2026-10-31 · ámbito: Angular 22.1.4–22.2.3 instalado (`@Service` con `autoProvided: true` en 22.2.3; `httpResource` como `@publicApi 22.0`; `withIncrementalHydration` exportado por `@angular/core`) · fuente: tipos de los paquetes instalados. Al cambiar de major, revalidar.
+> **Frescura:** verificado 2026-11-14 · ámbito: Angular 22.2.4–22.2.5, RxJS 7.8.2, TypeScript 6.0.3, Vitest 5.0.5; sin `zone.js` (zoneless por defecto) · fuente: tipos de los paquetes instalados. Al cambiar de major, revalidar.
 
 | Capacidad | Disponibilidad |
 |---|---|
 | `signal`, `computed`, `effect`, control flow `@if`/`@for`, `@defer`, `input()`/`output()`/`model()` | 21+ |
 | `linkedSignal`, `resource`, `rxResource`, `afterRenderEffect`, `provideZonelessChangeDetection` | 21+ |
-| `httpResource` | **22.0** (`@publicApi 22.0`, verificado en los tipos de 22.1.4) |
-| Hidratación incremental (`withIncrementalHydration`) | 21+ (verificado: exportado por `@angular/core` en 22.1.4) |
-| `@Service()` | **22.2** (`autoProvided` por defecto `true`, verificado en `@angular/core@22.2.3`) |
+| `httpResource` | **22.0** (`@publicApi 22.0`, verificado en los tipos de 22.2.4) |
+| Hidratación incremental (`withIncrementalHydration`) | 21+ (verificado: exportado por `@angular/core` en 22.2.4) |
+| `@Service()` | **22.2** (`autoProvided` por defecto `true`, verificado en `@angular/core@22.2.4`) |
+| Zoneless por defecto | **22.0** (sin `zone.js` instalado, `ZONELESS_ENABLED` resuelve `true`) |
 
 **Prohibido por ser legacy**: `NgModule`, `*ngIf`/`*ngFor`/`*ngSwitch`, decoradores `@Input`/`@Output`/`@ViewChild`, `ChangeDetectorRef.detectChanges()` manual, `Renderer2` salvo integración con librerías de terceros, y `ngOnChanges` para derivar estado (usar `computed`/`linkedSignal`).
 
@@ -69,8 +70,8 @@ Toda decisión tiene un precio. Estas son las que sostienen una app que crece:
 | Estilos | Tailwind 4 + DaisyUI 5 (prescindible: si el proyecto usa otro sistema, el patrón no cambia) |
 | Estado | signals, `computed`, `linkedSignal` |
 | Datos | `httpResource`/`rxResource` para lecturas; servicio de mutaciones para escrituras |
-| Lint | ESLint flat config + `angular-eslint` (TS, templates y accesibilidad) |
-| Verificación | `ng build` (valida templates) + `pnpm lint` |
+| Lint | ESLint flat config + `angular-eslint` (TS, templates y accesibilidad) — si el proyecto no define script `lint`, la verificación es `ng build` + `ng test` |
+| Verificación | `ng build` (valida templates) + `pnpm lint` (si existe) + `ng test` |
 
 > **TypeScript**: fijar la versión compatible con la del Angular instalado; no actualizar TS por separado.
 
@@ -123,7 +124,7 @@ Cada fork tiene un default y una condición de cambio. Sin esta tabla, la guía 
 ### 5.1 Servicios
 
 - **Nunca `HttpClient` en una página o componente**: todo pasa por el servicio del feature y este por el servicio base.
-- **Decorador**: `@Service()` (22.2+) en servicios de aplicación, `autoProvided: true` por defecto. `@Injectable({ providedIn: ... })` solo con alcance o `useFactory` explícito; en 21.x, `@Injectable` siempre. No "corrijas" un `@Service()` a `@Injectable`: rompe la provisión automática.
+- **Decorador**: `@Service()` (22.2+) en servicios de aplicación, `autoProvided: true` por defecto. `@Injectable({ providedIn: ... })` solo con alcance o `useFactory` explícito; en 21.x, `@Injectable` siempre. No "corrijas" un `@Service()` a `@Injectable`: rompe la provisión automática. En 22.2+ un servicio raíz puede usar cualquiera de los dos (`@Service()` y `@Injectable({providedIn:'root'})` son equivalentes): elige uno por proyecto y no mezcles.
 - Query params con `HttpParams`, que ya codifica; `encodeURIComponent` solo si construyes la URL a mano.
 - `search` vacío no se envía (`!== ''`); `limit` acotado (1–100) según el contrato de la API.
 - Uploads con un único método multipart (`postWithFile<T>()`) y borrado de adjuntos con `deleteResource<T>()`.
@@ -188,18 +189,20 @@ protected readonly submitForm = output<{ id: number; data: SaveModel }>();
 ## 6. Auth
 
 - **[CSR]** token en el navegador + interceptor funcional que añade `Authorization: Bearer`.
-- **[SSR]** sesión por namespace en `sessionStorage` (`auth.{ns}.access_token/refresh_token/user`), `sessionSignal(ns)` reactivo e interceptor con refresh+retry en 401 y `logout(ns)` si el refresh falla.
-- **⚠️ Seguridad**: `localStorage`/`sessionStorage` no aíslan el token de JavaScript del mismo origen; un XSS lo roba. Para producción, preferir BFF con cookie `HttpOnly` + `Secure` + `SameSite`. Nunca presentar el storage como frontera de seguridad.
+- **[SSR] Default: BFF + cookie `HttpOnly`** (detalle en `references/auth.md`): el cliente nunca ve tokens, `AuthStoreService` guarda solo `hasSession` y el guard consulta `/auth/me` de forma asíncrona.
+- **[SSR] Legacy: tokens en `sessionStorage`** por namespace (`auth.{ns}.access_token/refresh_token/user`), `sessionSignal(ns)` reactivo e interceptor con refresh+retry en 401. ⚠️ El storage no aíslan el token del JavaScript del mismo origen: un XSS lo roba. Nunca presentarlo como frontera de seguridad.
 - No escribir signals durante el constructor ni durante el render: en SSR produce comportamiento inconsistente. Usar `effect()` para reacciones y `afterNextRender`/`afterRenderEffect` para lo que depende del DOM.
+- Roles: guard asíncrono **separado** del guard de sesión. Con cookie `HttpOnly` el rol no está disponible de forma síncrona en el cliente: lo trae `/auth/me` (o un claim), nunca lo inventes.
 
 ---
 
 ## 7. Feedback
 
-- **Error → modal** disparado por el interceptor: única fuente. Las páginas no llaman `error.show()`.
+- **Error HTTP → modal** disparado por el interceptor: única fuente. Los errores **no HTTP** (SDK de terceros, popup de OAuth) los muestra la página con `if (!(err instanceof HttpErrorResponse)) errorService.show(...)`. La regla es **no duplicar**, no "nunca mostrar".
+- **401**: se silencia solo cuando significa "sesión muerta" (hay sesión activa → limpiar sesión y redirigir; o la petición es a `/auth/me` → el guard ya redirige). Un 401 **sin sesión** (login con credenciales inválidas) **sí** se muestra: en BFF no hay refresh en el cliente.
 - **Éxito → toast** en cola con autocierre (~5 s) y cierre manual, solo en escrituras.
 - **Confirmación → promise-based**: `await confirm({ title, message })` resuelve `boolean`; la página no toca los outputs del modal.
-- Mensaje real: `err?.error?.detail || err?.message || fallback`; el interceptor ya formatea, no sobrescribir con genéricos.
+- Mensaje real: `detail` string → ese texto; `detail` array (validación Pydantic: `loc`/`msg`/`type`) → `campo (tipo): mensaje`; `status 0` → "No se pudo conectar con el servidor"; `status >= 500` → "Error interno del servidor". Nunca el body crudo ni el stack.
 - Los toasts necesitan `aria-live="polite"` para lectores de pantalla.
 
 ---
@@ -226,7 +229,9 @@ protected readonly submitForm = output<{ id: number; data: SaveModel }>();
 
 ## 10. Testing
 
-- Unitarios con `TestBed`; en zoneless, `provideZonelessChangeDetection()` en el setup y `await fixture.whenStable()` en lugar de `fakeAsync` cuando hay promesas.
+- Unitarios con `TestBed`; en Angular 22 el proyecto es **zoneless por defecto** si no instala `zone.js` (`ZONELESS_ENABLED` resuelve `true`), así que `provideZonelessChangeDetection()` es opcional: añádelo solo si el proyecto lo usa explícito. `await fixture.whenStable()` en lugar de `fakeAsync` cuando hay promesas.
+- **Runner por defecto de Angular 21+: Vitest** (`@angular/build:unit-test`, `runner: "vitest"`). Los globals (`describe`, `it`, `expect`) vienen de `tsconfig.spec.json` con `"types": ["vitest/globals"]`. Karma queda deprecado.
+- El código de servidor (`src/server/**`) se testea con **Vitest puro, sin TestBed**: funciones puras (cookies, cabeceras, csrf, json-error) y `vi.stubGlobal('fetch', ...)` para lo que habla con el upstream. TestBed queda para el código de app.
 - Signals: se leen con `signal()` y se asertan por valor; para `computed`, probar la función pura antes que el componente.
 - HTTP: `provideHttpClientTesting()` + `HttpTestingController` para verificar URL, método, params y body; no mockear el servicio base salvo en tests de integración.
 - `httpResource`/`rxResource`: probar los estados (`isLoading`, `error`, `value`) con el controlador de testing, no con temporizadores reales.
@@ -260,8 +265,8 @@ protected readonly submitForm = output<{ id: number; data: SaveModel }>();
 | # | Ítem | Cómo se comprueba |
 |---|---|---|
 | 1 | `ng build` sin errores (valida templates) | comando |
-| 2 | `pnpm lint` sin errores (TS, templates y a11y) | comando |
-| 3 | Sin `subscribe()` manual en páginas ni componentes de listado | búsqueda de `.subscribe(` en `features/` |
+| 2 | `pnpm lint` sin errores (TS, templates y a11y) **si el proyecto define el script**; si no, `ng build` + `ng test` | comando |
+| 3 | Sin `subscribe()` manual **para leer datos**; excepción: fire-and-forget (logout, beacon) con `take(1)` y `subscribe({error})` | búsqueda de `.subscribe(` en `features/` |
 | 4 | Sin `*ngIf`/`*ngFor`/`NgModule` | búsqueda de `*ngIf`, `NgModule` |
 | 5 | Outputs sin prefijo `on` y sin nombres nativos | `no-output-on-prefix`, `no-output-native` |
 | 6 | Lecturas con `httpResource`/`rxResource` y estados expuestos | revisión del componente |
@@ -269,7 +274,7 @@ protected readonly submitForm = output<{ id: number; data: SaveModel }>();
 | 8 | `OnPush` en componentes, con excepción documentada | búsqueda de `ChangeDetectionStrategy` |
 | 9 | A11y: labels asociados, foco en modales, `aria-live` en toasts | lint + revisión |
 | 10 | Sin secretos ni credenciales en el cliente | búsqueda de `apiKey`, `secret`, `token =` |
-| 11 | Feedback montado una vez: `modal-error`, `modal-confirm` y `toast` presentes en el layout | búsqueda de los selectores en `app.html` |
+| 11 | Feedback montado una vez: `modal-error` y `toast` en `app.html`; `modal-confirm` solo si el proyecto tiene acciones de borrado | búsqueda de los selectores en `app.html` |
 
 Los criterios específicos de un proyecto (nombres, endpoints, badges en tiempo real) van en `references/ejemplo-referencia.md`, no aquí.
 

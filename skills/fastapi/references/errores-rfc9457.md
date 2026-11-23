@@ -12,7 +12,14 @@ con `Content-Type: application/problem+json`.
 
 ```python
 from fastapi import status
-from rfc9457 import BadRequestProblem, ForbiddenProblem, NotFoundProblem, Problem, UnauthorisedProblem
+from rfc9457 import (
+  BadRequestProblem,
+  ConflictProblem,
+  ForbiddenProblem,
+  NotFoundProblem,
+  Problem,
+  UnauthorisedProblem,
+)
 
 
 class AppError(Problem):
@@ -30,13 +37,22 @@ class NotFoundError(NotFoundProblem):
     self.message = self.detail
 
 
-class DuplicateNameError(BadRequestProblem):
-  type_ = "duplicate-name"
-  title = "Duplicate resource."
+class ConflictError(ConflictProblem):
+  type_ = "conflict"
+  title = "Resource conflict."
 
-  def __init__(self, name: str):
-    super().__init__(detail=f"'{name}' already exists")
-    self.message = self.detail
+  def __init__(self, message: str = "El recurso ya existe"):
+    super().__init__(detail=message)
+    self.message = message
+
+
+class BadRequestError(BadRequestProblem):
+  type_ = "bad-request"
+  title = "Bad request."
+
+  def __init__(self, message: str = "Solicitud inválida"):
+    super().__init__(detail=message)
+    self.message = message
 
 
 class UnauthorizedError(UnauthorisedProblem):
@@ -123,5 +139,7 @@ app.add_exception_handler(RateLimitExceeded, eh)
 ## Reglas
 
 - Los services lanzan errores semánticos (`NotFoundError("Product")`), nunca `HTTPException`.
+- **Duplicado que viola un UNIQUE → `ConflictError` (409)**. No devuelvas 400 y 409 para el mismo error: elige uno y úsalo en todas las features.
 - No exponer detalles internos en el 500 (respuesta genérica, el detalle real va al log).
 - Compatibilidad con frontend: el campo `detail` es string en todos los casos; el 422 conserva el array `errors` original.
+- Los headers `X-RateLimit-*` en la respuesta de 429 son **opcionales** (recomendados para que el cliente pueda mostrar "reintenta en X"); su ausencia no rompe el contrato RFC 9457.

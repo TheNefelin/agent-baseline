@@ -70,7 +70,7 @@ Porque resuelve los problemas que matan a las APIs FastAPI cuando crecen, con de
 | Email transaccional | Brevo REST API (`/v3/smtp/email`) con `httpx` async (el patrón aplica a cualquier proveedor) |
 | Tests | `pytest` + `pytest-asyncio` + `httpx` |
 
-> **Frescura:** verificado 2026-10-13 · ámbito: FastAPI 0.143.0, SQLAlchemy 2.1.4, Pydantic 2.14.1, PostgreSQL 18 · fuente: PyPI (consulta manual, sin enlace registrado). Al cambiar de major, revalidar contra las release notes.
+> **Frescura:** verificado 2026-11-14 · ámbito: FastAPI 0.162.7, SQLAlchemy 2.1.8, Pydantic 2.14.3, httpx 0.28.1, pytest 9.2.0, PostgreSQL 18, Python 3.14 · fuente: `requirements.txt` de un proyecto en producción con la suite en verde. Al cambiar de major, revalidar contra las release notes.
 
 ---
 
@@ -98,7 +98,7 @@ project/
 │       │   ├── google_service.py   #   cliente del proveedor OAuth (httpx)
 │       │   └── session_repository.py
 │       ├── users/           # feature: usuarios (siempre presente; la consume security)
-│       ├── roles/           # feature: catálogo de roles/aprobaciones (sin routes, solo repository+service)
+│       ├── roles/           # feature: catálogo de roles/aprobaciones (repository+service; routes.py solo si se administra desde la API)
 │       ├── products/        # feature CRUD de ejemplo
 │       │   ├── routes.py        #   endpoints
 │       │   ├── service.py       #   reglas de negocio
@@ -117,7 +117,7 @@ project/
     └── test_contact_live.py # @pytest.mark.live (NO corre en CI, usa TEST_BREVO_EMAIL si aplica)
 ```
 
-**Regla**: un feature CRUD simple = 3 archivos (`routes.py`, `service.py`, `repository.py`). Si necesita DTOs propios o lógica extra (p. ej. upload), agrega archivos dentro de la misma carpeta. **Nunca** crees un `crud.py` global ni mezcles queries de features distintas.
+- **Estilo libre de services/repositories**: funciones de módulo (`async def create(db, data)`) o clases con `self.db` inyectado (`AuthService(db)`). Un feature CRUD simple = 3 archivos (`routes.py`, `service.py`, `repository.py`); si necesita DTOs o lógica extra, agrégalos dentro de la misma carpeta. **Nunca** crees un `crud.py` global ni mezcles queries de features distintas. Lo que no cambia es la separación de capas: la ruta solo llama al service, el service solo al repository de su feature.
 
 **Regla de cliente externo por uso**: si un cliente externo lo usa **1 solo feature**, va encapsulado dentro de esa feature (p. ej. `contact/brevo.py`, `auth/google_service.py`). Si lo usan **≥2 features**, sube a `core/` (p. ej. `core/cloudinary.py`). Esto evita acoplar `core/` con dominios específicos.
 
@@ -130,7 +130,7 @@ project/
 ### 4.1 Route (decide HTTP)
 - Solo declara `APIRouter(prefix, tags, dependencies=[Depends(verify_api_key)])`, endpoints y delega al service.
 - **Nunca** hace queries, **nunca** arma `JSONResponse` de error, **nunca** valida reglas de negocio.
-- `status_code` explícito por endpoint (`HTTP_200_OK/201/204`).
+- `status_code` explícito por endpoint: creación que devuelve recurso direccionable → 201; `register`/`login` que ya emiten tokens → 200.
 - Endpoints de escritura agregan `_: dict = Depends(require_admin)` (o `require_user` para endpoints de usuario autenticado).
 - Paginación se inyecta con `params: Annotated[PaginationRequest, Depends()]`. **NO** usar `Annotated[Model, Query()]` (en FastAPI reciente no se combina con otros query params y rompe con 422).
 
@@ -139,16 +139,17 @@ project/
 - **El service decide el error**, el repository solo devuelve datos (`None` si no existe).
 - Los `await db.commit()` viven en la capa de datos, nunca en el service. Preferible: **una transacción por request** — el repository hace `flush()` y `get_db()` hace `commit()`/`rollback()` al cerrar la request, así varios repositorios del mismo request son atómicos. Si el commit vive en cada método del repository, dos llamadas dejan datos parciales. (Detalle: `references/tests.md`.)
 - Helpers de validación de FK se exponen para otros features: `ensure_product_exists(db, id)`.
-- **Regla cross-feature**: si una feature necesita datos de otra, se importa **su service** (`from src.api.categories import service as categories_service` → `categories_service.exists_by_id(...)`), nunca su repository directamente.
-- **Regla de capa de datos**: el service **NUNCA importa `src.models.models`** (entidades ORM). Solo el repository toca entidades. El service tipa y retorna únicamente DTOs (`dtos.*`); si necesita la entidad de su propia feature, el repository se la devuelve y el service la mapea. Si necesita datos de otra feature, usa su service (que devuelve DTOs).
-- **Cross-feature con entidades**: jamás se pasan entidades ORM entre services. Se comparten **DTOs o value-objects** (`dataclass` de `core`/`schemas`, p. ej. `src.core.email.EmailData`): el caller mapea su propia entidad al value-object y el receptor solo conoce el contrato de datos. Queries de validación de existencia/FK → métodos del repository propio (`edition_exists`, `copy_status_exists`), nunca `db.get(models.X, ...)` en el service.
+- **Regla cross-feature**: si una feature necesita datos de otra, se importa **su service** (`from src.api.categories import service as categories_service` → `categories_service.exists_by_id(...)`), nunca su repository directamente. Excepción consciente: si la otra feature es un **catálogo sin routes** (roles, estados), consumir su `repository` solo para lecturas de catálogo es admisible; anótalo como excepción.
+- **Regla de capa de datos**: el service **NUNCA importa `src.models.models`** (entidades ORM). Solo el repository toca entidades; el service tipa y retorna únicamente DTOs (`dtos.*`). Si necesita la entidad de su feature, el repository se la devuelve y el service la mapea; si necesita datos de otra feature, usa su service.
+- **Regla de `core/`**: `core/security.py` y `core/startup.py` **sí** pueden consultar el ORM de lectura del usuario y sus catálogos (evita el import circular `core → api.users → core.security`); lectura mínima y documentada. Lo que no se permite es que un **service** de `api/` haga lo mismo.
+- **Cross-feature con entidades**: jamás se pasan entidades ORM entre services. Se comparten **DTOs o value-objects** (`dataclass` de `core`/`schemas`): el caller mapea su entidad al value-object y el receptor solo conoce el contrato. Validaciones de existencia/FK → métodos del repository propio (`exists_by_id`), nunca `db.get(models.X, ...)` en el service.
 
 ### 4.3 Repository (solo queries SQLAlchemy)
 - Una función por operación: `count`, `get_all`, `get_by_id`, `exists_by_name`, `exists_by_id`, `create`, `update`, `delete`.
 - `create`/`update` reciben `dict` (de `data.model_dump()`) y devuelven el modelo refrescado.
 - Búsqueda con `ilike` (se omite si `None`/vacío).
 - Filtros específicos (p. ej. `category_id`) van como parámetros, **no** dentro del DTO de paginación.
-- `commit()` + `refresh()` aquí, no en el service.
+- **`flush()` aquí, nunca `commit()`**: el `commit()` vive en `get_db()` (una transacción por request). Si el repository commiteara por su cuenta, dos llamadas del mismo request dejarían datos parciales (§4.2).
 - **Es la única capa que importa `src.models.models`**: construye entidades (`models.X(**data)`), ejecuta queries y expone validaciones de existencia (`exists_by_id`, `edition_exists`) para que el service jamás toque entidades.
 
 ---
@@ -160,7 +161,8 @@ project/
 - Un único `models.py` (evita imports circulares).
 - **Esquema (prefijo de tablas, tipos, dinero en centavos, auditoría y reglas de borrado)**: se define en la skill `sql` (§1) y aquí solo se mapea. No se redefinen esas reglas: dos fuentes de verdad divergen en la primera corrección.
 - Identidades: si una PK/columna es `GENERATED ALWAYS AS IDENTITY`, **no insertar valores explícitos** para esa columna (Postgres lanza `ProgrammingError`). Para idempotencia en el seed: si la columna tiene UNIQUE (`ON CONFLICT (col)`), y si NO la tiene (`INSERT ... SELECT ... WHERE NOT EXISTS`).
-- `Mapped`/`mapped_column` con tipos de Python (`str | None`), no strings.
+- `Mapped`/`mapped_column` con tipos de Python (`str | None`), no strings. La API clásica `Column(...)` como anotación de `Mapped[...]` también es válida.
+- **El ORM mapea exactamente las FKs y tipos del DDL** (`UUID` para `users.id`): un `Mapped[int]` sobre una columna UUID no falla al escribir, falla al leer. Detalle y variante sin `relationship` (queries explícitos en el repository, para evitar el lazy load async) en `references/modelos.md`.
 - Relaciones con `back_populates` simétricos y `order_by` para listas ordenadas.
 - **Sin cascadas en el ORM** (convención del proyecto; prevalece sobre la regla general de `sql` §1, que las admite en composición real): no usar `cascade="all, delete-orphan"` en `relationship` ni `ondelete="CASCADE"` en `ForeignKey`. El borrado secundario es siempre **explícito** en repository/service.
   - **Dirección de la dependencia**: la cascada ilegal va de una maestra/catálogo hacia sus hijas o hacia otras maestras. Borrar una maestra puede limpiar sus **tablas puente**, nunca las otras maestras que la puente referencia.
@@ -176,13 +178,14 @@ El ejemplo de `models.py` (`Category`/`Product` con `Mapped`, `relationship`, ti
 
 ## 6. DTOs (Pydantic v2)
 
-- `AppModel` base con `ConfigDict(from_attributes=True)` → permite `model_validate(orm_object)`.
+- `AppModel` base con `ConfigDict(from_attributes=True)` → permite `model_validate(orm_object)`. Recomendada: evita olvidar el flag en un response nuevo. Si no hay clase base, **cada** response lleva `model_config = ConfigDict(from_attributes=True)`.
 - `PaginationRequest` y `PaginationResponse[T]` compartidos en `dtos.py`.
 - Tipos estrictos: fechas como `datetime` (Pydantic v2 es estricto: `str` rompe con `model_validate`), precios enteros.
 - Request sin `from_attributes` (son de entrada), Response con `AppModel`.
 - **Validar las FKs**: en los `*Request`, los IDs de llaves foráneas llevan `Field(ge=1)` — un `0` o negativo jamás debe llegar a la BD.
 - `max_length` acotado en strings de entrada según el modelo; textos largos (`description`) con límite explícito.
 - Listas opcionales de IDs (relaciones many-to-many) con `Field(default_factory=list)`.
+- **Normalizar las claves de lookup en el DTO de entrada** con un `field_validator` (email: `strip().lower()`), no en la query ni en el repository. Así la búsqueda es siempre exacta y el índice UNIQUE se aprovecha; la columna guarda el valor ya normalizado.
 - **Responses con `str` que pueden venir `None` desde la BD**: si el DTO de respuesta declara el campo como `str` (obligatorio) pero en la BD puede ser NULL, validar con `... if x else ""` (o el string por defecto) en el service antes de `model_validate`; si no, Pydantic lanza `ValidationError` en runtime. Alternativa: declarar el campo como `str | None`.
 
 El código completo (`dtos.py`, incluido el `*DetailResponse` anidado y el `selectinload` en cadena para evitar N+1) está en **`references/dtos.md`**.
@@ -224,7 +227,7 @@ con `Content-Type: application/problem+json`. El código de las excepciones (`sr
 Config con **pydantic-settings** (recomendado) o con **python-dotenv + clase propia** (ambas válidas; el proyecto decide). Todo lo externo es **opcional** (el proyecto decide qué integra); las variables `TEST_*` son `None` por defecto y solo las leen las pruebas. Las requeridas (`DATABASE_URL`, `SECRET_KEY`, `API_KEY`, `CORS_ORIGINS`) van sin default y fallan al arrancar si faltan. Si usas python-dotenv, implementa un `_required(name)` que lance `RuntimeError` cuando falte.
 
 - `src/core/config.py`: `Settings(BaseSettings)` + `@property cors_origins_list` (parsea `CORS_ORIGINS` como JSON).
-- `src/core/database.py`: `create_async_engine(..., pool_pre_ping=True)`, `async_sessionmaker`, `get_db()` que hace `yield`.
+- `src/core/database.py`: `create_async_engine(..., pool_pre_ping=True)` (detecta conexiones muertas en poolers), `async_sessionmaker(expire_on_commit=False)`, `get_db()` que hace `yield` y commit/rollback al cerrar.
 - `src/core/logger.py`: formatter JSON + `ContextVar` para `request_id`; middleware en `main.py` que setea el `request_id` y loguea método, path, status y duración.
 
 El código de los tres archivos y el middleware está en **`references/configuracion-logging.md`**.
@@ -237,16 +240,16 @@ Antes de dar una API por terminada:
 
 - [ ] Estructura feature-based (`routes/service/repository` por carpeta)
 - [ ] `core/` separado para transversal (config, database, security, exceptions, logger, limiter, dependencies)
-- [ ] Un solo `models.py` y un solo `dtos.py` (DTOs locales solo en `schemas.py` del feature)
+- [ ] Un solo `models.py` y un solo `dtos.py` (DTOs locales en el `schemas.py` del feature; admitido un único `dtos.py` global en proyectos pequeños, pero entonces el DTO lleva prefijo de feature: `AuthGoogleRequest`, no `GoogleRequest`)
 - [ ] Paginación unificada (`PaginationRequest`/`PaginationResponse[T]`) en todos los listados
 - [ ] Errores RFC 9457 (`fastapi-problem`), nunca `HTTPException` en rutas
 - [ ] Auth: el rol se lee de la BD por request; `require_admin`/`require_user` declarativos; refresh rotation; API Key global; `user_id` extraído del token, nunca del body
-- [ ] Cross-feature solo service→service (sin imports a repository de otra feature); `commit` solo en repositories
+- [ ] Cross-feature solo service→service (sin imports a repository de otra feature); `commit` solo en `get_db()` (una transacción por request), nunca en service ni en repository
 - [ ] Service sin imports de `models` (entidades ORM); cross-feature con DTOs o value-objects (jamás entidades); validaciones de existencia vía repository (`exists_by_*`)
 - [ ] Borrado sin cascades: todo `delete` valida sus dependencias con otras tablas y bloquea con `BadRequestProblem` si hay hijos (sin `cascade`/`ondelete="CASCADE"`)
 - [ ] Uploads: borra la imagen anterior antes de subir, `delete()` limpia el storage, `extract_public_id` salta transformaciones
 - [ ] Rate limiting por identidad (JWT→`user:{id}`, si no→IP) + límite por endpoint si es formulario público
-- [ ] Logging JSON con `request_id` por petición
+- [ ] Logging JSON con `request_id` por petición (verifica que el logger tenga formatter JSON y `ContextVar`; si el proyecto usa texto plano, la casilla es NO hecha)
 - [ ] Logs con `logger` (nunca `print()`); excepciones con `exc_info=True` (o `logger.exception`) y contexto en el mensaje (ej. `notification_id`); helper centralizado si el mismo fallo se loguea en varios puntos
 - [ ] Tests con BD real, que dropean solo sus tablas (prefijo), seed de roles/admin, caso de error por recurso
 - [ ] Cliente externo por uso: 1 feature → dentro del feature (`contact/brevo.py`), ≥2 features → `core/`
@@ -265,7 +268,7 @@ Antes de dar una API por terminada:
 |-------------|------------------|
 | `HTTPException(status_code=404, detail=...)` dentro de rutas | Duplica lógica y rompe el formato RFC 9457 |
 | `print()` para registrar errores | Ruido no estructurado, sin `request_id` ni nivel ni stack trace; usar el `logger` del proyecto (`src.core.logger`) y `logger.error(..., exc_info=True)`. Un helper compartido (ej. `_log_email_failure`) evita 5 bloques duplicados |
-| Llamar a un proveedor externo sin `raise_for_status()` | Los 4xx/5xx se devuelven "exitosos" y se procesa el body de error como éxito (fallo silencioso). `response.raise_for_status()` convierte el status en excepción, y loguear `status_code` + body anticipa el diagnóstico |
+| Llamar a un proveedor externo y procesar su body sin comprobar el status | El body de error se procesa como éxito (fallo silencioso). Valida el status explícitamente (`if response.status_code != 200`) o con `raise_for_status()`, y decide el destino: error de negocio (401/403) o degradación suave (`None` + log) |
 | Un `crud.py` global | No escala: mezcla dominios y genera acoplamiento |
 | `from sqlalchemy import delete` + función local `async def delete` | Name shadowing: la función local opaca el import → `NameError`/`TypeError` al operar. Renombrar el import (`delete as sqla_delete`) |
 | DTO de respuesta sin `from_attributes=True` | `model_validate(orm_object)` falla (no lee atributos) → 500 en runtime. Los responses llevan `ConfigDict(from_attributes=True)` |
@@ -274,7 +277,7 @@ Antes de dar una API por terminada:
 | Un service que importa `src.models.models` | Mezcla la capa de persistencia con la de aplicación: el service queda atado al ORM. Solo el repository importa modelos; el service trabaja con DTOs y value-objects |
 | `db.get(models.X, ...)` o `models.X(**data)`/`db.add` en el service | Queries y construcción de entidades en la capa de aplicación. Mover al repository: validaciones de existencia (`exists_by_*`) y `create`/`create_many` reciben dicts |
 | Pasar entidades ORM entre features (service→service) | Acopla features a la representación de la BD; compartir DTOs o value-objects (`EmailData`) |
-| `db.commit()` en el service | El commit es responsabilidad de la capa de datos; en el service se pierde la atomicidad (varios commits sueltos) y se mezclan responsabilidades |
+| `db.commit()` en el service o en el repository | En el service se pierde la atomicidad (varios commits sueltos) y se mezclan responsabilidades; en el repository parte la transacción por request en dos. El `commit()` vive en `get_db()` |
 | **Borrado en cascada** (`cascade="all, delete-orphan"` o `ondelete="CASCADE"`) | Borra datos dependientes sin validación y sin aviso; rompe la integridad referencial. Con PK compuestas en tablas puente lanza `AssertionError` en SQLAlchemy. Todo borrado debe validar dependencias y bloquearte (`BadRequestProblem`) si existen |
 | **Confiar en el rol del token JWT** (sin leerlo de la BD) | Un admin destituido sigue con acceso hasta que expire el token (2h); un usuario eliminado sigue activo. Leer el rol real en cada request |
 | `Annotated[Model, Query()]` para paginación + otros query params | Rompe con 422 en FastAPI 0.139+ |

@@ -9,7 +9,7 @@ Guía de referencia para construir APIs REST en **.NET (ASP.NET Core)** siguiend
 
 Este archivo es un **skill**: se lee para replicar el patrón en cualquier proyecto .NET nuevo. No es una receta dogmática; es la lista de decisiones que convierten un CRUD simple en un backend mantenible, seguro y desplegable.
 
-**Referencias** (se leen bajo demanda, ruta relativa a esta skill): `references/maui.md` (clientes MAUI), `references/dapper.md` (acceso a datos con Dapper), `references/efcore.md` (acceso a datos con EF Core), `references/errores.md` (GlobalExceptionHandler y 400 uniforme), `references/auth.md` (PBKDF2, JWT, ApiKey), `references/rate-limiting-cors.md` (rate limiting y CORS), `references/swagger.md` (Swashbuckle vs OpenApi, filter y gotchas), `references/configuracion.md` (appsettings por entorno y fail-fast).
+**Referencias** (se leen bajo demanda, ruta relativa a esta skill): `references/maui.md` (clientes MAUI), `references/dapper.md` (acceso a datos con Dapper), `references/efcore.md` (acceso a datos con EF Core), `references/errores.md` (GlobalExceptionHandler y 400 uniforme), `references/auth.md` (PBKDF2, JWT, ApiKey), `references/rate-limiting-cors.md` (rate limiting y CORS), `references/swagger.md` (Swashbuckle vs OpenApi, filter y gotchas), `references/configuracion.md` (appsettings por entorno y fail-fast), `references/microsoft-skills.md` (skills especializadas de Microsoft: MSBuild, NuGet, testing, Blazor, MAUI, upgrades).
 
 ## Cuándo NO usar
 
@@ -298,3 +298,4 @@ El detalle de MAUI (MVVM, DI, Shell y navegación, Core vs MAUI, timers, audio, 
 - **Hash de contraseñas**: NIST *SP 800-132*; OWASP *Password Storage Cheat Sheet*.
 - **Config por entorno**: *The Twelve-Factor App* (`12factor.net`), factor III (config).
 - **.NET / EF Core**: Microsoft Learn (`learn.microsoft.com`), *Announcing .NET 10* (2025-11-11).
+- **Skills especializadas de Microsoft**: `github.com/dotnet/skills` (MIT, formato `agentskills.io`). Cubren MSBuild, NuGet, testing (xUnit/MSTest), Blazor, MAUI, Blazor, upgrades y más. Se consumen **tal cual** (copiar la carpeta de la skill a `.baseline/skills/` o `.agents/skills/` y correr `-Update`). Detalle: `references/microsoft-skills.md`.
