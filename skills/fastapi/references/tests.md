@@ -220,3 +220,18 @@ Misma trampa con `patch("src.core.security.hash_refresh_token")` si el repositor
 ### Test de contrato de la API Key
 
 Parametriza **todas** las rutas del router y asserta 401 con `type == "invalid-api-key"`. Envía un body **válido** a propósito: con un body vacío el 422 de validación enmascara el fallo de la API Key (falso positivo real).
+
+### Repoblar la BD de desarrollo (seed idempotente)
+
+Un script `repopulate_db.py` que aplica el DDL + seed sobre la BD de desarrollo, con `--force` (drop + recreate) y `--test` (usa `TEST_DATABASE_URL`):
+
+```python
+# repopulate_db.py
+parser.add_argument("--force", action="store_true", help="Drop and recreate the DB first.")
+parser.add_argument("--test", action="store_true", help="Use TEST_DATABASE_URL instead of DATABASE_URL.")
+```
+
+- El seed debe ser **idempotente**: FKs por natural keys (no IDs en duro), `ON CONFLICT` o `INSERT ... WHERE NOT EXISTS`.
+- `--force` termina las conexiones activas (`pg_terminate_backend`) antes de `DROP DATABASE`.
+- El DDL y el seed viven en archivos `.sql` versionados (`schema_auth.sql`, `seed.sql`), no en código Python.
+- Para tests: el fixture aplica el mismo `.sql` (idempotente) y hace rollback por test — no toca la BD de desarrollo.

@@ -104,6 +104,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 - Los adaptadores son enlaces verificados: un archivo nuevo en `.baseline/skills/` aparece en `.agents/skills/`.
 - `angular` y `fastapi` revalidadas contra un proyecto real en producción (Angular 22.2.4 / FastAPI 0.162.7): 14 contradicciones corregidas, 3 de ellas bugs latentes que la skill propagaba (interceptor CSRF sin guarda de plataforma, regla absoluta del 401, `commit()` en el repository).
 - `angular/SKILL.md` §6: el patrón por defecto de SSR pasa a **BFF + cookie `HttpOnly`**; `sessionStorage` queda como variante legacy.
+- `angular/references/auth.md`: 12 patrones nuevos del BFF de portfolio-angular (refresh deduplication, origin check en CSRF, path traversal, method allowlist, body passthrough, `Cache-Control: no-store`, slash redirect, bad gateway 502, rate limiting 3 tiers, config lazy getters, refresh cache, rejected vs unavailable).
+- `fastapi/references/*`: 8 patrones nuevos de portfolio-python (logger JSON con ContextVar, image processing con retry, repopulate_db idempotente, etc.).
 - `dotnet/SKILL.md`: referencia a las skills oficiales de Microsoft (`github.com/dotnet/skills`) en `references/microsoft-skills.md`.
 - **Sin verificar**: la carga real de `opencode.json`, de los punteros y de los adaptadores por sus clientes (no hay ninguno instalado en esta máquina); tampoco se probó `-Workspace` en un workspace real ni la ejecución nativa en Linux/macOS.
 

@@ -8,6 +8,26 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.6.0] - 2026-11-18
+
+### Agregado
+- `angular/references/auth.md`: 12 patrones nuevos del BFF de portfolio-angular (refresh deduplication con inflight map, cache de 10 s, rejected vs unavailable, origin check en CSRF, path traversal en el proxy CRUD, method allowlist por recurso, body sin parsear con Buffer passthrough, `Cache-Control: no-store` en todo el BFF, slash redirect handling 307/308, bad gateway 502 JSON, rate limiting in-memory con 3 tiers y MAX_KEYS, config lazy getters que lanzan si falta).
+- `angular/references/feedback.md`: escrituras con `firstValueFrom` + try/catch/finally y Logger con contexto.
+- `fastapi/references/uploads.md`: limpieza en fallo (rollback del storage con retry y cleanup on failure), `extract_public_id` con loop hasta la versión.
+- `fastapi/references/tests.md`: `repopulate_db.py` (seed idempotente con `--force` y `--test`).
+- `dotnet/references/microsoft-skills.md`: referencia a las skills oficiales de Microsoft (`github.com/dotnet/skills`) con guía de uso "tal cual" y tabla de 15 plugins.
+
+### Corregido
+- `angular/references/auth.md`: BFF modular (`http/`, `middleware/`, `proxy/`, `services/`), proxy partido por dominio, contrato de error JSON uniforme, `Secure` condicionado al host, guard async de roles, logout fire-and-forget, SDK con timeout y reseteo, CSP con post-proceso (eliminar `content-length`/`etag`), tests del BFF con Vitest puro, CSRF condicional en el BFF y no reenviar `X-CSRF-Token` al upstream.
+- `angular/SKILL.md`: el patrón por defecto de SSR pasa a **BFF + cookie `HttpOnly`**; `sessionStorage` queda como variante legacy.
+- `angular/SKILL.md`: la regla del 401 pasa de absoluta a condicional; los errores **no HTTP** los muestra la página; `provideZonelessChangeDetection()` es opcional; Vitest es el runner por defecto desde 21+.
+- `fastapi/SKILL.md`: `commit()` solo en `get_db()` (una transacción por request); regla de `core/`; excepción consciente para catálogos sin routes; anti-patrón del proveedor reescrito.
+- `fastapi/references/errores-rfc9457.md`: el duplicado que viola UNIQUE devuelve `ConflictError` (409).
+- `dotnet/SKILL.md`: referencia a las skills oficiales de Microsoft.
+
+### Cambiado
+- `angular/SKILL.md` y `fastapi/SKILL.md`: marker de frescura revalidado contra proyecto real.
+
 ## [0.5.0] - 2026-11-18
 
 ### Agregado

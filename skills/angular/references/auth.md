@@ -180,6 +180,164 @@ Al hacer forwarding, filtrar también `x-csrf-token`: el CSRF del BFF se deriva 
 - Al reenviar el body editado, elimina `content-length` y `etag` (ya no cuadran) y manda `Cache-Control: no-store` para que no se cachee HTML con nonce viejo.
 - `script-src` sin `unsafe-inline`/`unsafe-eval`; `style-src` mantiene `unsafe-inline` (Tailwind/DaisyUI).
 
+### Refresh de sesión (deduplicación + cache + rejected/unavailable)
+
+El BFF es dueño de la sesión. El refresh debe manejar tres casos:
+
+- **Deduplicación inflight**: si llegan dos requests con el mismo refresh token (race condition), solo uno ejecuta el refresh; el otro espera el mismo promise. Evita emitir dos pares de tokens.
+- **Cache de 10 s**: si una petición rezagada llega con la cookie vieja justo después del refresh, se sirve el resultado cacheado en vez de rechazar. Se limpia con `setTimeout(...).unref()`.
+- **Rejected vs unavailable**: un 401/403 del upstream = "token rechazado" → borrar sesión. Un error de red o 5xx = "no disponible" → no borrar sesión (puede ser transitorio).
+
+```ts
+// auth/session.ts
+const inflight = new Map<string, Promise<RefreshResult>>();
+
+export function refreshSession(refreshToken: string): Promise<RefreshResult> {
+  let promise = inflight.get(refreshToken);
+  if (!promise) {
+    promise = doRefresh(refreshToken);
+    inflight.set(refreshToken, promise);
+    setTimeout(() => inflight.delete(refreshToken), 10_000).unref();
+    void promise.then((r) => {
+      if (r.status === 'unavailable') inflight.delete(refreshToken);
+    });
+  }
+  return promise;
+}
+```
+
+- `doRefresh` usa `AbortSignal.timeout(5_000)` para no colgar si el upstream no responde.
+- Maneja redirects 307/308 solo si son same-origin y same-path (sin query).
+
+### Origin check en el guard CSRF
+
+Además del doble envío (cookie vs header), el BFF verifica que el `Origin` de la petición coincida con el `Host`:
+
+```ts
+// auth/csrf.ts
+const origin = req.headers.origin;
+if (origin) {
+  try {
+    if (new URL(origin).host !== req.headers.host) return fail(res);
+  } catch {
+    return fail(res);
+  }
+}
+```
+
+Defensa en profundidad: bloquea peticiones cross-origin incluso si el atacante logra enviar la cookie.
+
+### Path traversal en el proxy CRUD
+
+El proxy valida la URL **después** de normalizarla con `new URL`:
+
+```ts
+// crud/proxy.ts
+if (!reqUrl.startsWith('/') || /%2f|%5c|\\/i.test(reqUrl)) return null;
+const target = new URL(basePath + reqUrl, base.origin);
+if (target.origin !== base.origin) return null;
+if (!target.pathname.startsWith(basePath + '/')) return null;
+```
+
+- Valida **después** de normalizar: `..` y `%2e%2e` ya se resolvieron.
+- `origin` check previene SSRF.
+- `pathname` prefix check previene path traversal.
+
+### Method allowlist por recurso
+
+```ts
+// crud/proxy.ts
+const RESOURCES: Record<string, readonly string[]> = {
+  language: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  project: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  'auth/me': ['GET'],
+};
+```
+
+Si el método no está permitido → `405 Method Not Allowed` con `Allow` header. Todo lo demás → 404.
+
+### Body sin parsear (Buffer passthrough)
+
+```ts
+// bff.ts
+bff.use(express.raw({ type: () => true, limit: '5mb' }));
+```
+
+El body se reenvía tal cual como `Uint8Array`. Evita `express.json()` que parsea y re-serializa (pierde formato, añade overhead, puede alterar el body). El proxy valida `req.is('multipart/form-data')` para uploads.
+
+### Cache-Control: no-store en todo el BFF
+
+```ts
+// bff.ts (middleware global)
+bff.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+```
+
+Ninguna respuesta del BFF se cachea (navegador ni CDN). Evita que HTML con nonce viejo se cachee.
+
+### Slash redirect handling (307/308)
+
+```ts
+// http/forward.ts
+if (upstream.status === 307 || upstream.status === 308) {
+  const next = slashRedirect(target, upstream.headers.get('location'));
+  if (next) upstream = await call(next);
+}
+```
+
+Solo sigue redirects same-origin y same-path (sin query). Bloquea redirects a otros dominios (SSRF) y a paths distintos.
+
+### Bad gateway (502 JSON)
+
+Si el upstream no responde o devuelve un error de red, el proxy responde:
+
+```ts
+res.status(502).json({ type: 'upstream-unavailable', title: 'Upstream Service Unavailable.', status: 502 });
+```
+
+Siempre JSON, nunca HTML de error de Express. El cliente parsea `detail`.
+
+### Config lazy (getters que lanzan si falta)
+
+```ts
+// config/index.ts
+export const serverConfig = {
+  get apiUrl() { return required('API_URL'); },
+  get apiKey() { return required('API_KEY'); },
+  get googleClientId() { return required('GOOGLE_CLIENT_ID'); },
+};
+```
+
+`required(name)` lanza si la variable falta. Se evalúa en cada acceso, no al importar (el build SSR extrae rutas sin env vars). Más estricto que el patrón `Proxy` que devuelve `''`.
+
+### Public config endpoint
+
+```ts
+// auth/public-config.ts
+publicConfigRouter.get('/config', (_req, res) => {
+  res.json({ googleClientId: serverConfig.googleClientId });
+});
+```
+
+Expone solo valores públicos (client IDs de OAuth). NUNCA secretos. No exige sesión.
+
+### Rate limiting in-memory con 3 tiers
+
+Rate limiter propio (sin dependencias) con tres tiers independientes:
+
+| Tier | Cuándo | Default |
+|------|--------|---------|
+| read | GET/HEAD (incluido /auth/me) | 50/min |
+| write | POST/PUT/PATCH/DELETE fuera de /auth | 10/min |
+| auth | POST/PUT/PATCH/DELETE bajo /auth/* | 5/min |
+
+- **MAX_KEYS = 10_000**: tope de claves en memoria para evitar que un atacante con muchas IPs agote la RAM.
+- **Lazy sweep**: limpia entradas expiradas solo cuando se necesita, sin timers (los timers en serverless no son fiables).
+- **Limitación documentada**: en serverless (Vercel) cada instancia cuenta por su cuenta, así que el límite real es más alto que el configurado. Es una red de seguridad barata, no la defensa principal.
+- **IP del cliente**: solo fiable detrás de un proxy de confianza (Vercel sobrescribe `x-forwarded-for`).
+
 ### Configuración del servidor (src/server/)
 
 ```

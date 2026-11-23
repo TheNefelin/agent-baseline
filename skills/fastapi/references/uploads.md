@@ -85,3 +85,46 @@ async def upload_image(db, id, file_bytes):
 > **Nota**: `cloudinary.uploader.upload/destroy` son sincrónicas; llamarlas directo dentro de `async def` bloquea el event loop bajo carga (mismo patrón en `delete()`).
 
 **Eliminación con imagen**: el `delete()` del service borra la imagen del storage antes de borrar el registro.
+
+### Limpieza en fallo (rollback del storage)
+
+Si la subida tiene éxito pero la persistencia en la BD falla (o al revés), el archivo queda huérfano en el storage. Envolver la subida en un `try/except` que borre lo subido si algo falla después:
+
+```python
+# src/core/image.py — sube la nueva PRIMERO y borra la anterior después
+async def upload_image_16_9(folder: str, file_bytes: bytes) -> str:
+  public_id = None
+  try:
+    url, public_id = cloudinary_upload_16_9(file_bytes=file_bytes, folder=folder)
+    return url
+  except Exception as e:
+    if public_id:
+      try:
+        cloudinary_delete_image(public_id)
+      except Exception:
+        pass
+    raise e
+```
+
+- Subir **primero**, borrar **después**: si la subida falla, la imagen vieja sigue disponible.
+- Si el borrado del storage falla, no propagar: el registro ya se borró, y un archivo huérfano es mejor que una excepción al usuario.
+- `delete_image(public_id, retries=2)`: reintentar el `destroy` un par de veces (el storage puede tener latencia) y considerar `result == "not found"` como éxito.
+
+### `extract_public_id` (sacar el public_id desde la URL)
+
+Las URLs de Cloudinary incluyen un bloque de transformación opcional (`c_fill,w_1280,q_auto,...`) antes de la versión (`v<timestamp>`). Hay que saltarlo hasta la versión:
+
+```python
+def extract_public_id(url: str) -> str | None:
+  if not url: return None
+  try:
+    after_upload = url.split("/upload/")[1]
+    while after_upload and not after_upload.startswith("v"):
+      after_upload = after_upload.split("/", 1)[1]
+    parts = after_upload.split("/", 1)[1] if "/" in after_upload else after_upload
+    return parts.rsplit(".", 1)[0]
+  except Exception:
+    return None
+```
+
+Sin el loop, `destroy()` recibe un public_id inválido (`v.../folder/file`) y el storage no borra el archivo.
