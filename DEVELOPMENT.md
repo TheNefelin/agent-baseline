@@ -4,7 +4,7 @@
 
 Reglas de operación (`AGENTS.md`) más un catálogo de skills reutilizables para agentes de código. Cada skill es un cuerpo corto que se carga siempre y un conjunto de referencias que se leen solo cuando hacen falta.
 
-**18 skills** y **51 casos** de eval de enrutamiento.
+**19 skills** y **55 casos** de eval de enrutamiento.
 
 ## Mapa del proyecto
 
