@@ -47,7 +47,7 @@ Porque resuelve los problemas que matan a las APIs FastAPI cuando crecen, con de
 | **Rate limiting por identidad** (JWT → `user:{id}`, si no → IP) | Protección de fuerza bruta que no castiga a todos por un solo abusador: si el request trae token, el límite es por usuario |
 | **Logging JSON con `request_id`** | Trazabilidad: cada log de una petición comparte el mismo ID |
 | **Cliente externo según uso** (Cloudinary en `core/` vs Google/Brevo en el feature) | Si lo usa ≥2 features va en `core/`; si lo usa 1 feature va encapsulado dentro de esa feature (sin acoplar `core/` con dominios) |
-| **Tests con BD real aislada** | Los tests corren contra la misma tecnología de prod (PostgreSQL), con fixtures que dropean **solo sus tablas** |
+| **Tests con BD real aislada** | Los tests corren contra la misma tecnología de prod (PostgreSQL), limpiando **solo las tablas del proyecto** (TRUNCATE con lista explícita). **Nunca** DROP SCHEMA, TRUNCATE sin lista ni drop_all |
 | **Tests live aislados por marker** (`@pytest.mark.live`) | Los tests que tocan servicios externos reales (enviar mail, cobrar) no corren en CI: se excluyen por defecto y se ejecutan a demanda |
 | **Errores de negocio ≠ errores HTTP** | El service lanza `NotFoundError("Product")` (semántico) y el framework lo traduce a 404. Nunca `HTTPException` en rutas |
 | **Errores de proveedor mapeados** | Un fallo de un servicio externo se traduce según su status (`401/403`→config, `429`→rate limit, resto→`502`), nunca un `502` genérico que trague el detalle real |
@@ -251,7 +251,7 @@ Antes de dar una API por terminada:
 - [ ] Rate limiting por identidad (JWT→`user:{id}`, si no→IP) + límite por endpoint si es formulario público
 - [ ] Logging JSON con `request_id` por petición (verifica que el logger tenga formatter JSON y `ContextVar`; si el proyecto usa texto plano, la casilla es NO hecha)
 - [ ] Logs con `logger` (nunca `print()`); excepciones con `exc_info=True` (o `logger.exception`) y contexto en el mensaje (ej. `notification_id`); helper centralizado si el mismo fallo se loguea en varios puntos
-- [ ] Tests con BD real, que dropean solo sus tablas (prefijo), seed de roles/admin, caso de error por recurso
+- [ ] Tests con BD real, que limpian solo sus tablas (TRUNCATE con lista explícita, nunca DROP SCHEMA ni drop_all), seed de roles/admin, caso de error por recurso
 - [ ] Cliente externo por uso: 1 feature → dentro del feature (`contact/brevo.py`), ≥2 features → `core/`
 - [ ] Errores de proveedor externo mapeados por status (401/403→config, 429→429, resto→502) y respuesta logueada en éxito
 - [ ] Tests live aislados (`@pytest.mark.live`) excluidos por defecto (`-m "not live"`)

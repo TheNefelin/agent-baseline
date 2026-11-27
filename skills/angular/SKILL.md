@@ -236,7 +236,7 @@ protected readonly submitForm = output<{ id: number; data: SaveModel }>();
 - HTTP: `provideHttpClientTesting()` + `HttpTestingController` para verificar URL, método, params y body; no mockear el servicio base salvo en tests de integración.
 - `httpResource`/`rxResource`: probar los estados (`isLoading`, `error`, `value`) con el controlador de testing, no con temporizadores reales.
 - e2e para los flujos críticos (login, alta, edición, borrado) con el runner que ya use el proyecto; no introducir uno nuevo sin justificarlo.
-- Un test que toca base de datos compartida requiere autorización explícita y limpieza aislada.
+- Un test que toca base de datos compartida requiere autorización explícita. **Nunca** `DROP SCHEMA`, `TRUNCATE` sin lista ni `drop_all`: limpiar **solo las tablas del proyecto** (TRUNCATE con lista explícita de tablas propias). Patrón detallado en skill `fastapi` → `references/tests.md` (guard de destino, limpieza por tablas, archivos `.sql` como fuente de verdad).
 
 ---
 

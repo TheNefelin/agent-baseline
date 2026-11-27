@@ -55,6 +55,7 @@ El **diseño del esquema y la consulta SQL** (motor-agnóstico) vive aquí; el *
 - **Migraciones versionadas** (EF Core Migrations, Flyway, Liquibase, Alembic, o scripts numerados): nunca cambios manuales a producción. Cada migración debe ser **reversible** o tener un plan de rollback explícito.
 - **Cambios compatibles primero**: agregar columnas nulas o con default, desplegar el código que las usa, y recién después quitar las viejas (patrón expandir/contraer) para no romper versión anterior durante el despliegue.
 - **Datos vs. esquema**: separa migraciones de esquema y de datos; los seed deben ser **idempotentes** (por clave natural, no por IDs en duro).
+- **Archivos .sql versionados (convención)**: todo proyecto backend con BD debe tener `postgre_schema.sql` (DDL: CREATE TABLE IF NOT EXISTS + índices + constraints), `postgre_seed.sql` (seeds idempotentes) y opcionalmente `postgre_auth.sql` (roles/usuarios iniciales). Estos archivos son la **fuente de verdad** de qué tablas pertenecen al proyecto. Los tests usan esta lista para limpiar **solo sus tablas** (TRUNCATE con lista explícita). **Nunca** DROP SCHEMA, TRUNCATE sin lista ni drop_all.
 - **Réplica de la BD real en tests**: un esquema de prueba distinto al de producción (otro motor, otro tipo de dato) invalida los tests. Usa el mismo motor.
 
 ## 5. Diferencias clave entre motores

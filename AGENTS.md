@@ -17,6 +17,10 @@ Aplica a todo texto producido o modificado: código, comentarios, documentación
 
 No copies un mal estilo preexistente solo porque ya estaba: esta regla prevalece sobre el contenido anterior.
 
+### Indentación
+
+2 espacios para todos los proyectos excepto .NET (C#, que usa 4 espacios por convención del ecosistema). Aplica a código, configuración, documentación y todo texto producido o modificado. Si el proyecto existente usa 4 espacios y no es .NET, migra a 2 espacios al tocar el archivo.
+
 ## 1.1. Memoria: leer primero
 
 Antes de actuar:
