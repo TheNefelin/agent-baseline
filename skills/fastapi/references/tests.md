@@ -64,7 +64,7 @@ async def _clean_tables(session: AsyncSession):
     await session.commit()
 ```
 
-**Regla**: `TRUNCATE` solo las tablas del proyecto (con `RESTART IDENTITY CASCADE` para resetear secuencias). **Nunca** `DROP SCHEMA`, `TRUNCATE` sin lista, ni `drop_all` sobre la BD.
+**Regla**: `TRUNCATE` solo las tablas del proyecto (con `RESTART IDENTITY CASCADE` para resetear secuencias). **Nunca** `DROP SCHEMA`, `TRUNCATE` sin lista, ni `drop_all` sobre la BD. Los tests **no crean ni eliminan tablas ni BD** — solo ejecutan tests y limpian datos entre runs.
 
 ### `tests/conftest.py`
 
@@ -130,7 +130,7 @@ async def _clean_tables(session: AsyncSession):
 @pytest.fixture(scope="module")
 async def setup_db():
     # Aplica el DDL real del proyecto (postgre_schema.sql, idempotente).
-    # NO hace DROP SCHEMA. La BD de tests es dedicada y desechable.
+    # NO hace DROP SCHEMA ni crea/elimina BD. La BD de tests es dedicada.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -188,56 +188,78 @@ async def test_create_product_duplicate_name(client, db):
     assert "already exists" in response.json()["detail"]
 ```
 
-**Flujo de trabajo**: `pytest` corre contra `TEST_DATABASE_URL` (BD dedicada `*_test`). Los tests limpian **solo las tablas del proyecto** (TRUNCATE con lista explícita). **Nunca** DROP SCHEMA, TRUNCATE sin lista, ni drop_all. El rol de tests **no debe tener permisos de DDL/DROP** sobre producción. Para repoblar la BD de desarrollo usa `repopulate_db.py --force`; el seed debe ser idempotente (FKs por natural keys, no IDs en duro).
+**Flujo de trabajo**: `pytest` corre contra `TEST_DATABASE_URL` (BD dedicada `*_test`). Los tests limpian **solo las tablas del proyecto** (TRUNCATE con lista explícita). **Nunca** DROP SCHEMA, TRUNCATE sin lista, ni drop_all. El rol de tests **no debe tener permisos de DDL/DROP** sobre producción. Para repoblar la BD de desarrollo usa `repopulate_db.py`; el seed debe ser idempotente (FKs por natural keys, no IDs en duro).
 
 ---
 
-### Mocks y binding de imports (gotcha)
-
-Normalizar imports (subir a nivel de módulo las importaciones que estaban dentro de funciones) es buena higiene, pero **rompe los mocks que parchean el módulo fuente**:
-
-```python
-# service.py
-from .google_service import verify_google_token   # liga el objeto al namespace de service
-
-# tests
-with patch("src.api.auth.google_service.verify_google_token", ...):  # NO intercepta:
-    ...  # service ya tiene su propia referencia al objeto original
-```
-
-El test no falla con error: ejecuta el código real (p. ej. llama a Google) y devuelve el resultado de verdad, lo que suele manifestarse como un 401 o un timeout. **La forma correcta** es importar el módulo y resolver el atributo en tiempo de llamada:
-
-```python
-from . import google_service
-
-info = await google_service.verify_google_token(token)  # el patch sí intercepta
-```
-
-Misma trampa con `patch("src.core.security.hash_refresh_token")` si el repository importó la función: importa el módulo.
-
-### Gotcha de `pytest -q`
-
-`pytest.ini` del proyecto suele traer `addopts = -m "not live"` (o `-q`). Pasar `-q` otra vez lo convierte en `-qq` y **oculta la línea final "N passed"**, que es la que se reporta. Corre `python -m pytest` a secas para verla.
-
-### Desactivar el rate limit en tests
-
-`limiter.enabled = False` a nivel de módulo (no solo `limiter.reset()`): el límite por IP comparte cuota entre tests y produce 429 espurios. Reactiva el limiter solo en un test dedicado que verifique el 429.
-
-### Test de contrato de la API Key
-
-Parametriza **todas** las rutas del router y asserta 401 con `type == "invalid-api-key"`. Envía un body **válido** a propósito: con un body vacío el 422 de validación enmascara el fallo de la API Key (falso positivo real).
-
 ### Repoblar la BD de desarrollo (seed idempotente)
 
-Un script `repopulate_db.py` que aplica el DDL + seed sobre la BD de desarrollo, con `--force` (drop + recreate) y `--test` (usa `TEST_DATABASE_URL`):
+Todo proyecto backend con BD debe incluir un script `repopulate_db.py` que aplica el DDL + seed sobre la BD de desarrollo. **No crea ni elimina la BD** — solo aplica los `.sql` (que usan `CREATE TABLE IF NOT EXISTS`). Si se quiere empezar desde cero, el desarrollador elimina la BD manualmente.
+
+**Template completo:**
 
 ```python
 # repopulate_db.py
-parser.add_argument("--force", action="store_true", help="Drop and recreate the DB first.")
-parser.add_argument("--test", action="store_true", help="Use TEST_DATABASE_URL instead of DATABASE_URL.")
+import argparse
+import os
+import sys
+from pathlib import Path
+
+import asyncpg
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent
+SCHEMA_FILE = BASE_DIR / "postgre_schema.sql"
+SEED_FILE = BASE_DIR / "postgre_seed.sql"
+AUTH_SCHEMA_FILE = BASE_DIR / "postgre_auth.sql"
+
+
+def _normalize(url: str) -> str:
+    return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+
+async def _apply_file(conn, path, label):
+    sql = path.read_text(encoding="utf-8")
+    await conn.execute(sql)
+    print(f"Applied {label}: {path.name}")
+
+
+async def main() -> int:
+    parser = argparse.ArgumentParser(description="Rebuild the database from SQL files.")
+    parser.add_argument("--test", action="store_true", help="Use TEST_DATABASE_URL instead of DATABASE_URL.")
+    args = parser.parse_args()
+
+    load_dotenv(BASE_DIR / ".env")
+    url = os.getenv("TEST_DATABASE_URL" if args.test else "DATABASE_URL")
+    if not url:
+        print("ERROR: DATABASE_URL is not defined in .env.", file=sys.stderr)
+        return 1
+    url = _normalize(url)
+
+    for file, label in ((SCHEMA_FILE, "schema"), (SEED_FILE, "seed")):
+        if not file.exists():
+            print(f"ERROR: {file.name} not found in {BASE_DIR}.", file=sys.stderr)
+            return 1
+
+    conn = await asyncpg.connect(url)
+    try:
+        await _apply_file(conn, SCHEMA_FILE, "schema")
+        if AUTH_SCHEMA_FILE.exists():
+            await _apply_file(conn, AUTH_SCHEMA_FILE, "auth schema")
+        await _apply_file(conn, SEED_FILE, "seed")
+    finally:
+        await conn.close()
+
+    print("Done. Database rebuilt.")
+    return 0
+
+
+if __name__ == "__main__":
+    import asyncio
+    raise SystemExit(asyncio.run(main()))
 ```
 
 - El seed debe ser **idempotente**: FKs por natural keys (no IDs en duro), `ON CONFLICT` o `INSERT ... WHERE NOT EXISTS`.
-- `--force` termina las conexiones activas (`pg_terminate_backend`) antes de `DROP DATABASE`.
 - El DDL y el seed viven en archivos `.sql` versionados (`postgre_schema.sql`, `postgre_seed.sql`, `postgre_auth.sql`), no en código Python.
 - Para tests: el fixture aplica el mismo `.sql` (idempotente) y hace rollback por test — no toca la BD de desarrollo.
+- **Nunca** DROP DATABASE, DROP SCHEMA, ni drop_all. Si se necesita empezar de cero, el desarrollador lo hace manualmente.
