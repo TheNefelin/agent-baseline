@@ -64,7 +64,7 @@ async def _clean_tables(session: AsyncSession):
     await session.commit()
 ```
 
-**Regla**: `TRUNCATE` solo las tablas del proyecto (con `RESTART IDENTITY CASCADE` para resetear secuencias). **Nunca** `DROP SCHEMA`, `TRUNCATE` sin lista, ni `drop_all` sobre la BD. Los tests **no crean ni eliminan tablas ni BD** — solo ejecutan tests y limpian datos entre runs.
+**Regla absoluta**: Los tests **NUNCA** crean, modifican ni eliminan tablas, esquemas ni BD. Los tests solo ejecutan tests. La limpieza entre tests es `TRUNCATE` de las tablas del proyecto (con `RESTART IDENTITY CASCADE`), definidas en `postgre_schema.sql`. **Nunca** `DROP SCHEMA`, `TRUNCATE` sin lista, ni `drop_all`. La gestión de tablas/BD es exclusiva de los archivos `.sql` y de `repopulate_db.py` (herramienta del desarrollador, no de tests).
 
 ### `tests/conftest.py`
 
@@ -192,74 +192,15 @@ async def test_create_product_duplicate_name(client, db):
 
 ---
 
-### Repoblar la BD de desarrollo (seed idempotente)
+### Archivos .sql (gestión de tablas)
 
-Todo proyecto backend con BD debe incluir un script `repopulate_db.py` que aplica el DDL + seed sobre la BD de desarrollo. **No crea ni elimina la BD** — solo aplica los `.sql` (que usan `CREATE TABLE IF NOT EXISTS`). Si se quiere empezar desde cero, el desarrollador elimina la BD manualmente.
+Todo proyecto backend con BD debe incluir al menos:
 
-**Template completo:**
+| Archivo | Obligatorio | Contenido |
+|---|---|---|
+| postgre_schema.sql | Sí | DDL: CREATE TABLE IF NOT EXISTS + índices + constraints |
+| postgre_seed.sql | Sí | Seeds idempotentes (ON CONFLICT / WHERE NOT EXISTS) |
+| postgre_auth.sql | Opcional | Datos de auth (roles, usuarios iniciales) |
 
-```python
-# repopulate_db.py
-import argparse
-import os
-import sys
-from pathlib import Path
-
-import asyncpg
-from dotenv import load_dotenv
-
-BASE_DIR = Path(__file__).resolve().parent
-SCHEMA_FILE = BASE_DIR / "postgre_schema.sql"
-SEED_FILE = BASE_DIR / "postgre_seed.sql"
-AUTH_SCHEMA_FILE = BASE_DIR / "postgre_auth.sql"
-
-
-def _normalize(url: str) -> str:
-    return url.replace("postgresql+asyncpg://", "postgresql://", 1)
-
-
-async def _apply_file(conn, path, label):
-    sql = path.read_text(encoding="utf-8")
-    await conn.execute(sql)
-    print(f"Applied {label}: {path.name}")
-
-
-async def main() -> int:
-    parser = argparse.ArgumentParser(description="Rebuild the database from SQL files.")
-    parser.add_argument("--test", action="store_true", help="Use TEST_DATABASE_URL instead of DATABASE_URL.")
-    args = parser.parse_args()
-
-    load_dotenv(BASE_DIR / ".env")
-    url = os.getenv("TEST_DATABASE_URL" if args.test else "DATABASE_URL")
-    if not url:
-        print("ERROR: DATABASE_URL is not defined in .env.", file=sys.stderr)
-        return 1
-    url = _normalize(url)
-
-    for file, label in ((SCHEMA_FILE, "schema"), (SEED_FILE, "seed")):
-        if not file.exists():
-            print(f"ERROR: {file.name} not found in {BASE_DIR}.", file=sys.stderr)
-            return 1
-
-    conn = await asyncpg.connect(url)
-    try:
-        await _apply_file(conn, SCHEMA_FILE, "schema")
-        if AUTH_SCHEMA_FILE.exists():
-            await _apply_file(conn, AUTH_SCHEMA_FILE, "auth schema")
-        await _apply_file(conn, SEED_FILE, "seed")
-    finally:
-        await conn.close()
-
-    print("Done. Database rebuilt.")
-    return 0
-
-
-if __name__ == "__main__":
-    import asyncio
-    raise SystemExit(asyncio.run(main()))
-```
-
-- El seed debe ser **idempotente**: FKs por natural keys (no IDs en duro), `ON CONFLICT` o `INSERT ... WHERE NOT EXISTS`.
-- El DDL y el seed viven en archivos `.sql` versionados (`postgre_schema.sql`, `postgre_seed.sql`, `postgre_auth.sql`), no en código Python.
-- Para tests: el fixture aplica el mismo `.sql` (idempotente) y hace rollback por test — no toca la BD de desarrollo.
-- **Nunca** DROP DATABASE, DROP SCHEMA, ni drop_all. Si se necesita empezar de cero, el desarrollador lo hace manualmente.
+Estos archivos son la **fuente de verdad** de qué tablas pertenecen al proyecto.
+Los tests usan esta lista para saber qué limpiar. **Nunca** se eliminan ni crean BD ni tablas desde los tests ni desde scripts automatizados. Si se necesita empezar de cero, el desarrollador lo hace manualmente.

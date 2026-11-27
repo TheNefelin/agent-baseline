@@ -8,6 +8,22 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.6.1] - 2026-11-27
+
+### Corregido
+- Regla absoluta: tests nunca crean/eliminan tablas, esquemas ni BD. Solo ejecutan tests y limpian datos (TRUNCATE de tablas del proyecto). Nunca DROP SCHEMA, TRUNCATE sin lista ni drop_all.
+- Eliminado template de 
+epopulate_db.py de fastapi tests.md (no debe generarse automáticamente).
+- Convención de archivos .sql versionados (postgre_schema.sql, postgre_seed.sql, postgre_auth.sql) como fuente de verdad de las tablas del proyecto.
+- Angular SKILL.md §10: especifica limpieza solo de tablas del proyecto, referencia fastapi tests.md.
+- SQL SKILL.md §4: documenta la convención de archivos .sql versionados.
+- FastAPI SKILL.md: actualiza descripción de tests con BD real.
+
+### Agregado
+- Regla de indentación (2 espacios, excepto .NET) en AGENTS.md §1.1.
+- Nueva skill python-ml (ML clásico en Python) con 7 referencias.
+- Anti-patrones documentados con Lucky_IA como caso de estudio.
+
 ## [0.6.0] - 2026-11-18
 
 ### Agregado
