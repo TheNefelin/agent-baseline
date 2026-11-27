@@ -8,6 +8,21 @@ Criterio de versión:
 - **Minor**: skill nueva o ampliada.
 - **Patch**: correcciones de texto, frescura, typos.
 
+## [0.6.2] - 2026-11-27
+
+### Corregido
+- FastAPI tests.md: regla absoluta de no DROP SCHEMA/DB/truncate sin lista.
+  Tests solo ejecutan tests, no crean/eliminan tablas ni BD.
+- FastAPI tests.md: convención de archivos .sql (schema + seed + auth) como
+  fuente de verdad de las tablas del proyecto.
+- FastAPI tests.md: template de repopulate_db.py eliminado (era incorrecto).
+- FastAPI SKILL.md: agrega .sql files a estructura y checklist.
+- Angular SKILL.md: limpieza de BD solo por tablas del proyecto.
+- SQL SKILL.md: convención de archivos .sql versionados.
+
+### Cambiado
+- FastAPI SKILL.md: reduce cuerpo a 299 líneas (bajo presupuesto de 7000 tokens).
+
 ## [0.6.1] - 2026-11-27
 
 ### Corregido

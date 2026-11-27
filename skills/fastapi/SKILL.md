@@ -2,35 +2,24 @@
 name: fastapi
 description: "APIs REST en Python (FastAPI, SQLAlchemy 2.1 async, PostgreSQL): endpoints, modelos ORM, servicios, auth, uploads, email, testing. NO para `dotnet`, esquema/motores (`sql`/`nosql`) ni frontend (`angular`/`astro`)."
 ---
-
 # SKILL: API FastAPI en Python — Patrón Senior (transversal)
-
 Guía de referencia para construir APIs REST con **FastAPI + SQLAlchemy 2.1 (async) + PostgreSQL**, siguiendo una arquitectura y convenciones senior validadas en producción. Es **transversal**: los ejemplos son genéricos (CRUD, catálogos, auth, uploads, email) y aplican a cualquier dominio — e-commerce, SaaS, contenido, fintech, lo que sea.
-
 Este archivo es un **skill**: se lee para replicar el patrón en cualquier API nueva. No es una receta dogmática, es la lista de decisiones que convierten un CRUD simple en un backend mantenible.
-
 **Servicios externos (todos opcionales según el proyecto, y por eso se configuran como tal):**
 - **Auth**: Google OAuth (`api/auth/google_service.py`) + JWT + refresh rotation — reemplazable por cualquier proveedor OAuth.
 - **Imágenes**: Cloudinary (`core/cloudinary.py`) — el patrón de almacenamiento es el mismo para cualquier servicio (S3, etcétera).
 - **Email transaccional**: Brevo (`api/contact/brevo.py`) — REST API `/v3/smtp/email` con httpx async; el patrón aplica a cualquier proveedor.
-
 **Referencias** (se leen bajo demanda, rutas relativas a esta skill): `references/auth.md`, `references/uploads.md`, `references/email.md`, `references/rate-limiting.md`, `references/tests.md`, `references/ejemplo-crud.md`, `references/dtos.md`, `references/modelos.md`, `references/errores-rfc9457.md`, `references/configuracion-logging.md`.
-
 ## Cuándo NO usar
-
 | Situación | Skill |
 |-----------|-------|
 | API en .NET / C# / ASP.NET Core | `dotnet` |
 | Diseño de esquema, tipos, índices, constraints o migraciones del motor | `sql` (SQL Server / PostgreSQL) o `nosql` |
 | Frontend Angular o Astro | `angular` / `astro` |
 | Diseño visual / mockups previos a implementar | `ui-ux-mockup` |
-
 El **cómo** se escribe la API (feature-based, route→service→repository, DTOs, errores RFC 9457) vive aquí; el **esquema de la BD** y el mapeo con SQLAlchemy se apoyan en `sql`.
-
 ---
-
 ## 1. ¿Por qué este patrón es SENIOR?
-
 Porque resuelve los problemas que matan a las APIs FastAPI cuando crecen, con decisiones **justificadas**, no por moda:
 
 | Decisión | Problema que resuelve |
@@ -82,6 +71,8 @@ project/
 ├── .env_demo                # plantilla sin valores reales
 ├── pytest.ini               # pythonpath = . | asyncio_mode = auto | addopts = -m "not live"
 ├── requirements.txt         # versiones fijas (pip freeze)
+├── postgre_schema.sql + postgre_seed.sql + postgre_auth.sql  # DDL + seeds + auth (idempotentes)
+├── repopulate_db.py         # aplica los .sql (NO crea/elimina BD ni tablas)
 ├── run.py                   # uvicorn src.main:app --reload
 ├── src/
 │   ├── main.py              # app FastAPI, CORS, routers, exception handlers
@@ -256,6 +247,7 @@ Antes de dar una API por terminada:
 - [ ] Errores de proveedor externo mapeados por status (401/403→config, 429→429, resto→502) y respuesta logueada en éxito
 - [ ] Tests live aislados (`@pytest.mark.live`) excluidos por defecto (`-m "not live"`)
 - [ ] `requirements.txt` con versiones fijas; `.env_demo` como plantilla
+- [ ] Archivos `.sql` versionados (schema + seed + auth)
 - [ ] DTOs con `datetime` (no `str`), precios/monedas en enteros, FKs con `Field(ge=1)`, `max_length` acotado
 - [ ] `selectinload`/`joinedload` para relaciones eager (evita N+1)
 - [ ] Seed idempotente (FKs por natural keys)
@@ -267,10 +259,8 @@ Antes de dar una API por terminada:
 | Anti-patrón | Por qué evitarlo |
 |-------------|------------------|
 | `HTTPException(status_code=404, detail=...)` dentro de rutas | Duplica lógica y rompe el formato RFC 9457 |
-| `print()` para registrar errores | Ruido no estructurado, sin `request_id` ni nivel ni stack trace; usar el `logger` del proyecto (`src.core.logger`) y `logger.error(..., exc_info=True)`. Un helper compartido (ej. `_log_email_failure`) evita 5 bloques duplicados |
 | Llamar a un proveedor externo y procesar su body sin comprobar el status | El body de error se procesa como éxito (fallo silencioso). Valida el status explícitamente (`if response.status_code != 200`) o con `raise_for_status()`, y decide el destino: error de negocio (401/403) o degradación suave (`None` + log) |
 | Un `crud.py` global | No escala: mezcla dominios y genera acoplamiento |
-| `from sqlalchemy import delete` + función local `async def delete` | Name shadowing: la función local opaca el import → `NameError`/`TypeError` al operar. Renombrar el import (`delete as sqla_delete`) |
 | DTO de respuesta sin `from_attributes=True` | `model_validate(orm_object)` falla (no lee atributos) → 500 en runtime. Los responses llevan `ConfigDict(from_attributes=True)` |
 | Lógica en la ruta (validaciones, queries) | Imposible de testear unitariamente y de reutilizar |
 | Un service que importa el repository de **otra** feature | Acopla la feature por implementación; romper esa tabla rompe todo. Ir siempre por el service (service→service) |
@@ -297,7 +287,6 @@ Antes de dar una API por terminada:
 
 ## 12. Fuentes
 
-- **ProblemDetails / errores HTTP**: IETF *RFC 9457* (Problem Details for HTTP APIs).
 - **JWT**: IETF *RFC 8725* (JSON Web Token Best Current Practices).
 - **Config por entorno**: *The Twelve-Factor App* (`12factor.net`), factor III (config).
 - **Stack**: documentación oficial de FastAPI (`fastapi.tiangolo.com`), SQLAlchemy (`docs.sqlalchemy.org`) y Pydantic (`docs.pydantic.dev`).
